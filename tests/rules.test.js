@@ -1,3 +1,5 @@
+// Busy times are in local time; fix the zone so the expected slots are the same on any machine.
+process.env.TZ = "UTC";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -182,4 +184,77 @@ test("a title and quantities survive a backup, and bad ones are refused", () => 
   assert.throws(bad((x) => { x.rewards[1].stock = -1; }), /quantity/);
   assert.throws(bad((x) => { x.rewards[1].stock = "5"; }), /quantity/);
   assert.throws(bad((x) => { x.title = ""; }), /title/);
+});
+
+test("how tokens turned out", () => {
+  const s = computeStats(sample());
+  assert.deepEqual(s.outcomes, { wonBoth: 1, wonOne: 2, lostBoth: 1 });
+  assert.equal(s.gameWins, 4);
+  assert.equal(s.gameLosses, 4);
+  assert.equal(s.playersWon, 3);
+  assert.equal(s.playersNeverWon, 0);
+  assert.equal(s.returning, 1, "Asha came back");
+});
+
+test("busy times: half-hour slots, quiet ones included", () => {
+  const s = computeStats(sample());
+  assert.deepEqual(s.slots, [
+    { start: 540, count: 2 }, // 09:00
+    { start: 570, count: 0 }, // 09:30, nobody started
+    { start: 600, count: 1 },
+    { start: 630, count: 1 },
+  ]);
+  assert.deepEqual(s.busiest.map((x) => x.start), [540]);
+  assert.deepEqual(s.quietest.map((x) => x.start), [570]);
+  assert.equal(s.firstStart, "2026-11-28T09:00:00.000Z");
+  assert.equal(s.lastFinish, "2026-11-28T10:45:00.000Z");
+  assert.equal(s.tokensPerHour, 4 / 1.75);
+});
+
+test("most players at once", () => {
+  const d = sample();
+  const now = new Date("2026-11-28T11:05:00.000Z");
+  assert.deepEqual(computeStats(d, now).peak, { count: 1, at: "2026-11-28T09:00:00.000Z" });
+  d.tokens[1].startedAt = "2026-11-28T09:05:00.000Z"; // overlaps Asha's first token
+  d.tokens[4].startedAt = "2026-11-28T10:40:00.000Z"; // still open, overlaps Ben's
+  const peak = computeStats(d, now).peak;
+  assert.equal(peak.count, 2);
+  assert.equal(peak.at, "2026-11-28T09:05:00.000Z", "the first time it happened");
+});
+
+test("a token that ends as another starts doesn't count as overlapping", () => {
+  const d = sample();
+  d.tokens[1].startedAt = d.tokens[0].finishedAt;
+  assert.equal(computeStats(d, new Date("2026-11-28T11:05:00.000Z")).peak.count, 1);
+});
+
+test("popular, unpopular, hardest and easiest games", () => {
+  const s = computeStats(sample());
+  const names = (list) => list.map((g) => g.name);
+  assert.deepEqual(names(s.games.mostPopular), ["Game 1"]);
+  assert.deepEqual(names(s.games.leastPopular), ["Game 5", "Game 6", "Game 7", "Game 8"]);
+  assert.deepEqual(names(s.games.neverPlayed), ["Game 5", "Game 6", "Game 7", "Game 8"]);
+  assert.deepEqual(names(s.games.hardest), ["Game 1"], "only Game 1 has 3+ plays");
+  assert.deepEqual(names(s.games.easiest), ["Game 1"]);
+  const empty = computeStats(defaultData());
+  assert.deepEqual(empty.games.mostPopular, [], "no headline before anyone has played");
+  assert.deepEqual(empty.slots, []);
+  assert.equal(empty.tokensPerHour, null);
+});
+
+test("students against teachers, and classes", () => {
+  const s = computeStats(sample());
+  const student = s.typeStats.find((t) => t.type === "student");
+  assert.deepEqual(student, { type: "student", players: 2, tokens: 3, wins: 3, plays: 6, winRate: 0.5, favourite: ["Game 1"] });
+  const teacher = s.typeStats.find((t) => t.type === "teacher");
+  assert.deepEqual(teacher.favourite, ["Game 1", "Game 3"], "a tie lists both");
+  assert.deepEqual(s.classStats.map((c) => [c.cls, c.tokens, c.wins]), [["5B", 2, 1], ["3A", 1, 2]]);
+});
+
+test("winners, token times and the favourite prize", () => {
+  const s = computeStats(sample());
+  assert.deepEqual(s.topWinners.map((p) => [p.name, p.wins]), [["Ben", 2], ['Mr "Ravi", Kumar', 1], ["Asha", 1]]);
+  assert.deepEqual(s.longest, { name: "Asha", minutes: 20 });
+  assert.deepEqual(s.quickest, { name: "Asha", minutes: 10 });
+  assert.deepEqual(s.topPrize.map((r) => r.name), ["Pen", "Keychain"]);
 });

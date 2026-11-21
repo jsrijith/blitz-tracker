@@ -1,7 +1,7 @@
 import {
   PLAYER_TYPES, RESULTS, newId, defaultData, checkGamePick, checkFinish, wonAny, resultsComplete,
   openTokens, finishedTokens, computeStats, tokensToCsv, parseData,
-  DEFAULT_TITLE, givenCount, leftCount, parseStock,
+  DEFAULT_TITLE, givenCount, leftCount, parseStock, SLOT_MINUTES, MIN_PLAYS_FOR_RATE,
 } from "./rules.js";
 import { load, save, tokensSinceBackup, askPersistent, shareFile } from "./store.js";
 
@@ -274,33 +274,102 @@ function barsHtml(rows) {
     <span class="n">${esc(r.text ?? r.value)}</span></div>`).join("")}</div>`;
 }
 
+const hhmm = (minutes) => `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+const slotLabel = (slot) => `${hhmm(slot.start)}–${hhmm(slot.start + SLOT_MINUTES)}`;
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const pct = (x) => (x == null ? "–" : `${Math.round(x * 100)}%`);
+
+// "A, B and C", or "A, B and 3 more" for long ties.
+function nameList(names, max = 3) {
+  if (names.length <= max) return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0] ?? "";
+  return `${names.slice(0, max - 1).join(", ")} and ${names.length - max + 1} more`;
+}
+
+function highlightsHtml(s) {
+  const rows = [];
+  const add = (label, value, note) => rows.push(`<div class="hl"><span class="hl-label">${label}</span><span class="hl-value">${value}${note ? `<span class="hl-note">${note}</span>` : ""}</span></div>`);
+  const g = s.games;
+  if (s.busiest.length) add("Busiest time", esc(nameList(s.busiest.map(slotLabel))), plural(s.busiest[0].count, "token"));
+  if (s.peak.count > 1) add("Most at once", `${s.peak.count} playing`, `at ${time(s.peak.at)}`);
+  if (g.mostPopular.length) add("Most popular game", esc(nameList(g.mostPopular.map((x) => x.name))), plural(g.mostPopular[0].plays, "play"));
+  if (g.neverPlayed.length) add("Not picked yet", esc(nameList(g.neverPlayed.map((x) => x.name), 4)), "");
+  else if (g.leastPopular.length) add("Least popular game", esc(nameList(g.leastPopular.map((x) => x.name))), plural(g.leastPopular[0].plays, "play"));
+  if (g.hardest.length && g.easiest.length && g.hardest[0].winRate !== g.easiest[0].winRate) {
+    add("Hardest to win", esc(nameList(g.hardest.map((x) => x.name))), `${pct(g.hardest[0].winRate)} won`);
+    add("Easiest to win", esc(nameList(g.easiest.map((x) => x.name))), `${pct(g.easiest[0].winRate)} won`);
+  }
+  if (s.pairs.length && s.pairs[0].count > 1) add("Favourite pair", esc(s.pairs[0].names.join(" + ")), plural(s.pairs[0].count, "token"));
+  if (s.topPrize.length) add("Favourite prize", esc(nameList(s.topPrize.map((r) => r.name))), `picked ${s.topPrize[0].count}×`);
+  if (s.classStats.length > 1) add("Most active class", esc(s.classStats[0].cls), plural(s.classStats[0].tokens, "token"));
+  if (s.topWinners.length) add("Top winner", esc(s.topWinners[0].name), `${plural(s.topWinners[0].wins, "win")} in ${s.topWinners[0].plays} games`);
+  if (s.longest && s.tokens > 1) add("Longest token", esc(s.longest.name), `${Math.round(s.longest.minutes)} min`);
+  return rows.length ? `<div class="card highlights">${rows.join("")}</div>` : "";
+}
+
+function tableHtml(head, rows) {
+  return `<div class="table-wrap"><table class="table"><thead><tr>${head.map((h, i) => `<th${i ? ' class="num"' : ""}>${h}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map((r) => `<tr>${r.map((c, i) => `<td${i ? ' class="num"' : ""}>${c}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+
 function statsHtml() {
   const s = computeStats(data);
-  const pct = (x) => (x == null ? "–" : `${Math.round(x * 100)}%`);
+  if (!s.tokens) {
+    return `<div class="empty">Stats show up once the first token is finished.${s.inPlay ? `<br><br>${plural(s.inPlay, "token")} in play now.` : ""}</div>`;
+  }
   const kpi = (value, label) => `<div class="kpi"><div class="value">${value}</div><div class="label">${label}</div></div>`;
+  const o = s.outcomes;
   return `
+    <h2>Highlights</h2>
+    ${highlightsHtml(s)}
+
     <div class="kpis">
       ${kpi(s.tokens, "tokens used")}
       ${kpi(s.uniquePlayers, "different players")}
       ${kpi(s.plays, "games played")}
+      ${kpi(s.returning, "came back for more")}
       ${kpi(s.avgMinutes == null ? "–" : `${Math.round(s.avgMinutes)} min`, "per token, average")}
-      ${kpi(s.winners, "tokens with a win")}
-      ${kpi(s.inPlay, "in play now")}
+      ${kpi(s.tokensPerHour == null ? "–" : Math.round(s.tokensPerHour), "tokens an hour")}
     </div>
+
+    <h2>How players did</h2>
+    <div class="kpis three">
+      ${kpi(o.wonBoth, "won both games")}
+      ${kpi(o.wonOne, "won one game")}
+      ${kpi(o.lostBoth, "lost both games")}
+    </div>
+    <div class="card" style="margin-top:10px">
+      <p style="margin:0">Of ${plural(s.plays, "game")} played, <b>${s.gameWins} won</b> and <b>${s.gameLosses} lost</b> (${pct(s.gameWins / s.plays)} won).</p>
+      <p style="margin:8px 0 0"><b>${s.playersWon}</b> of ${s.uniquePlayers} players won at least once${s.playersNeverWon ? `; ${s.playersNeverWon} haven't won yet` : ""}.</p>
+    </div>
+
+    <h2>Busy times</h2>
+    <div class="card">${barsHtml(s.slots.map((x) => ({ label: hhmm(x.start), value: x.count })))}
+      <p class="small muted" style="margin:10px 0 0">Tokens started in each half hour${s.firstStart ? `, from ${time(s.firstStart)} to ${time(s.lastFinish)}` : ""}.</p></div>
+
     <h2>Games played</h2>
     <div class="card">${barsHtml([...s.perGame].sort((a, b) => b.plays - a.plays).map((g) => ({ label: g.name, value: g.plays })))}</div>
+
     <h2>Win rate by game</h2>
-    <div class="card">${barsHtml(s.perGame.filter((g) => g.plays).sort((a, b) => b.winRate - a.winRate).map((g) => ({ label: g.name, value: g.winRate, text: `${pct(g.winRate)} of ${g.plays}` })))}</div>
-    <h2>Prizes given</h2>
-    <div class="card">${barsHtml(s.rewards.map((r) => ({ label: r.name, value: r.count, text: r.left == null ? r.count : `${r.count} · ${r.left} left` })))}
-      ${s.noPick ? `<p class="small muted">${s.noPick} winner${s.noPick === 1 ? "" : "s"} took no prize.</p>` : ""}</div>
+    <div class="card">${barsHtml(s.perGame.filter((g) => g.plays).sort((a, b) => b.winRate - a.winRate).map((g) => ({ label: g.name, value: g.winRate, text: `${pct(g.winRate)} of ${g.plays}` })))}
+      <p class="small muted" style="margin:10px 0 0">Share of plays the player won. Hardest and easiest need ${MIN_PLAYS_FOR_RATE}+ plays.</p></div>
+
+    <h2>Students and teachers</h2>
+    <div class="card">${tableHtml(["", "Players", "Tokens", "Won", "Favourite"],
+      s.typeStats.map((t) => [cap(t.type) + "s", t.players, t.tokens, pct(t.winRate), esc(nameList(t.favourite, 2))]))}</div>
+
+    ${s.classStats.length ? `<h2>Classes</h2>
+    <div class="card">${tableHtml(["Class", "Players", "Tokens", "Won"], s.classStats.map((c) => [esc(c.cls), c.players, c.tokens, pct(c.winRate)]))}</div>` : ""}
+
     <h2>Favourite pairs</h2>
     <div class="card">${barsHtml(s.pairs.slice(0, 8).map((p) => ({ label: p.names.join(" + "), value: p.count })))}</div>
-    <h2>Tokens by hour</h2>
-    <div class="card">${barsHtml(s.perHour.map((h) => ({ label: `${String(h.hour).padStart(2, "0")}:00`, value: h.count })))}</div>
-    <h2>Who played</h2>
-    <div class="card">${barsHtml(s.byType.map((t) => ({ label: cap(t.type), value: t.count })))}</div>
-    ${s.byClass.length ? `<h2>Students by class</h2><div class="card">${barsHtml(s.byClass.map((c) => ({ label: c.cls, value: c.count })))}</div>` : ""}
+
+    <h2>Prizes given</h2>
+    <div class="card">${barsHtml(s.rewards.map((r) => ({ label: r.name, value: r.count, text: r.left == null ? r.count : `${r.count} · ${r.left} left` })))}
+      ${s.noPick ? `<p class="small muted">${plural(s.noPick, "winner")} took no prize.</p>` : ""}</div>
+
+    <h2>Most wins</h2>
+    <div class="card">${barsHtml(s.topWinners.map((p) => ({ label: p.name, value: p.wins, text: `${p.wins} of ${p.plays}` })))}</div>
+
     <h2>Most tokens</h2>
     <div class="card">${barsHtml(s.topPlayers.map((p) => ({ label: p.name, value: p.tokens })))}</div>
   `;

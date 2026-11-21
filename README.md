@@ -26,8 +26,11 @@ works without internet.
    Won or Lost for each game. If they won one, tap the prize they chose. Then tap
    **Finish token**. Made a mistake? Tap **Undo** on the message at the bottom.
 4. **Log**: every finished token. Tap one to fix or delete it.
-5. **Stats**: tokens, players, games played, win rate per game, prizes given and left,
-   favourite pairs of games, busiest hours, and who played.
+5. **Stats**: highlights first (busiest half hour, most players at once, most and least popular
+   game, hardest and easiest game, favourite pair and prize, most active class, top winner), then
+   how players did (won both, won one, lost both), busy times, plays and win rate per game,
+   students against teachers, classes, prizes given and left, and the players with the most wins
+   and tokens.
 
 ## Back up, because the data lives only on this phone
 

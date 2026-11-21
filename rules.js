@@ -111,27 +111,80 @@ export function pairKey(gameIdA, gameIdB) {
   return [gameIdA, gameIdB].sort().join("+");
 }
 
-export function computeStats(data) {
+export const SLOT_MINUTES = 30; // the busy-times chart counts tokens in half hours
+export const MIN_PLAYS_FOR_RATE = 3; // a game needs this many plays to be called hardest or easiest
+
+// Every item tied for the highest (or lowest) value.
+function leaders(items, valueOf, lowest = false) {
+  if (!items.length) return [];
+  const values = items.map(valueOf);
+  const best = lowest ? Math.min(...values) : Math.max(...values);
+  return items.filter((_, i) => values[i] === best);
+}
+
+const minuteOfDay = (iso) => {
+  const d = new Date(iso);
+  return d.getHours() * 60 + d.getMinutes();
+};
+
+// The most tokens being played at the same moment, and when that first happened.
+// Tokens still in play count as running until `now`.
+function peakInPlay(tokens, now) {
+  const events = [];
+  for (const t of tokens) {
+    const start = Date.parse(t.startedAt);
+    const end = t.finishedAt ? Date.parse(t.finishedAt) : now.getTime();
+    events.push([start, 1], [Math.max(start, end), -1]);
+  }
+  events.sort((a, b) => a[0] - b[0] || a[1] - b[1]); // a finish at the same moment goes first
+  let count = 0;
+  let peak = { count: 0, at: null };
+  for (const [at, step] of events) {
+    count += step;
+    if (count > peak.count) peak = { count, at: new Date(at).toISOString() };
+  }
+  return peak;
+}
+
+export function computeStats(data, now = new Date()) {
   const done = finishedTokens(data);
   const playerById = new Map(data.players.map((p) => [p.id, p]));
   const gameName = (id) => data.games.find((g) => g.id === id)?.name ?? "?";
+  const minutes = (t) => (Date.parse(t.finishedAt) - Date.parse(t.startedAt)) / 60000;
+  const rate = (wins, plays) => (plays ? wins / plays : null);
 
+  // Games ---------------------------------------------------------------
   const perGame = data.games.map((g) => {
     const plays = done.flatMap((t) => t.games.filter((x) => x.gameId === g.id));
     const wins = plays.filter((x) => x.result === "won").length;
-    return {
-      gameId: g.id,
-      name: g.name,
-      plays: plays.length,
-      wins,
-      winRate: plays.length ? wins / plays.length : null,
-    };
+    return { gameId: g.id, name: g.name, plays: plays.length, wins, winRate: rate(wins, plays.length) };
   });
+  const rated = perGame.filter((g) => g.plays >= MIN_PLAYS_FOR_RATE);
+  const games = done.length
+    ? {
+        mostPopular: leaders(perGame, (g) => g.plays),
+        leastPopular: leaders(perGame, (g) => g.plays, true),
+        neverPlayed: perGame.filter((g) => g.plays === 0),
+        hardest: leaders(rated, (g) => g.winRate, true),
+        easiest: leaders(rated, (g) => g.winRate),
+      }
+    : { mostPopular: [], leastPopular: [], neverPlayed: [], hardest: [], easiest: [] };
 
   const pairs = sortedEntries(countBy(done, (t) => pairKey(t.games[0].gameId, t.games[1].gameId))).map(
     ([key, count]) => ({ names: key.split("+").map(gameName), count }),
   );
 
+  // Results -------------------------------------------------------------
+  const winsIn = (t) => t.games.filter((g) => g.result === "won").length;
+  const outcomes = {
+    wonBoth: done.filter((t) => winsIn(t) === 2).length,
+    wonOne: done.filter((t) => winsIn(t) === 1).length,
+    lostBoth: done.filter((t) => winsIn(t) === 0).length,
+  };
+  const gameWins = done.reduce((n, t) => n + winsIn(t), 0);
+  const gameLosses = done.length * GAMES_PER_TOKEN - gameWins;
+
+  // Prizes --------------------------------------------------------------
   const rewards = data.rewards.map((r) => ({
     rewardId: r.id,
     name: r.name,
@@ -141,39 +194,103 @@ export function computeStats(data) {
   }));
   const winners = done.filter(wonAny).length;
   const noPick = done.filter((t) => wonAny(t) && t.rewardId == null).length;
+  const pickedPrizes = rewards.filter((r) => !data.rewards.find((x) => x.id === r.rewardId).everyone && r.count > 0);
+  const topPrize = leaders(pickedPrizes, (r) => r.count);
 
-  const perHour = sortedEntries(countBy(done, (t) => new Date(t.startedAt).getHours()))
-    .map(([hour, count]) => ({ hour: Number(hour), count }))
-    .sort((a, b) => a.hour - b.hour);
+  // Busy times ------------------------------------------------------------
+  // Half-hour slots from the first token to the last, empty ones included, so quiet spells show.
+  let slots = [];
+  if (done.length) {
+    const slotOf = (t) => Math.floor(minuteOfDay(t.startedAt) / SLOT_MINUTES) * SLOT_MINUTES;
+    const counts = countBy(done, slotOf);
+    const keys = [...counts.keys()];
+    for (let m = Math.min(...keys); m <= Math.max(...keys); m += SLOT_MINUTES) {
+      slots.push({ start: m, count: counts.get(m) || 0 });
+    }
+  }
+  const busiest = leaders(slots, (s) => s.count);
+  const quietest = slots.length > 2 ? leaders(slots, (s) => s.count, true) : [];
+  const starts = done.map((t) => t.startedAt).sort();
+  const finishes = done.map((t) => t.finishedAt).sort();
+  const firstStart = starts[0] ?? null;
+  const lastFinish = finishes.at(-1) ?? null;
+  const openHours = firstStart ? (Date.parse(lastFinish) - Date.parse(firstStart)) / 3600000 : null;
+  const peak = peakInPlay(data.tokens, now);
 
-  const durations = done.map((t) => Date.parse(t.finishedAt) - Date.parse(t.startedAt)).filter((ms) => ms >= 0);
-  const avgMinutes = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length / 60000 : null;
+  // Time per token ----------------------------------------------------------
+  const timed = done.filter((t) => minutes(t) >= 0);
+  const avgMinutes = timed.length ? timed.reduce((n, t) => n + minutes(t), 0) / timed.length : null;
+  const longest = leaders(timed, minutes)[0];
+  const quickest = leaders(timed, minutes, true)[0];
+  const tokenTime = (t) => t && { name: playerById.get(t.playerId)?.name ?? "?", minutes: minutes(t) };
 
-  const tokenPlayers = done.map((t) => playerById.get(t.playerId)).filter(Boolean);
-  const uniquePlayers = new Set(tokenPlayers.map((p) => p.id));
-  const uniqueList = [...uniquePlayers].map((id) => playerById.get(id));
-  const byType = sortedEntries(countBy(uniqueList, (p) => p.type)).map(([type, count]) => ({ type, count }));
-  const byClass = sortedEntries(countBy(uniqueList.filter((p) => p.cls), (p) => p.cls)).map(([cls, count]) => ({ cls, count }));
+  // Players ---------------------------------------------------------------
+  const tokensOf = new Map();
+  for (const t of done) tokensOf.set(t.playerId, [...(tokensOf.get(t.playerId) || []), t]);
+  const playing = [...tokensOf.keys()].map((id) => playerById.get(id)).filter(Boolean);
+  const winsOf = (p) => tokensOf.get(p.id).reduce((n, t) => n + winsIn(t), 0);
+  const playersWon = playing.filter((p) => winsOf(p) > 0).length;
+
+  const byType = sortedEntries(countBy(playing, (p) => p.type)).map(([type, count]) => ({ type, count }));
+  const byClass = sortedEntries(countBy(playing.filter((p) => p.cls), (p) => p.cls)).map(([cls, count]) => ({ cls, count }));
+
+  // Results for a group of players: students, teachers, or one class.
+  const group = (members) => {
+    const tokens = members.flatMap((p) => tokensOf.get(p.id));
+    const plays = tokens.flatMap((t) => t.games);
+    const wins = plays.filter((g) => g.result === "won").length;
+    const favourite = leaders(sortedEntries(countBy(plays, (g) => g.gameId)), ([, n]) => n).map(([id]) => gameName(id));
+    return { players: members.length, tokens: tokens.length, wins, plays: plays.length, winRate: rate(wins, plays.length), favourite };
+  };
+  const typeStats = byType.map(({ type }) => ({ type, ...group(playing.filter((p) => p.type === type)) }));
+  const classStats = byClass
+    .map(({ cls }) => ({ cls, ...group(playing.filter((p) => p.cls === cls)) }))
+    .sort((a, b) => b.tokens - a.tokens || a.cls.localeCompare(b.cls));
 
   const topPlayers = sortedEntries(countBy(done, (t) => t.playerId))
     .slice(0, 5)
     .map(([id, tokens]) => ({ name: playerById.get(id)?.name ?? "?", tokens }));
+  const topWinners = playing
+    .map((p) => ({ name: p.name, wins: winsOf(p), plays: tokensOf.get(p.id).length * GAMES_PER_TOKEN }))
+    .filter((p) => p.wins > 0)
+    .sort((a, b) => b.wins - a.wins || a.plays - b.plays || a.name.localeCompare(b.name))
+    .slice(0, 5);
+  const returning = playing.filter((p) => tokensOf.get(p.id).length >= 2).length;
 
   return {
     tokens: done.length,
     inPlay: openTokens(data).length,
     plays: done.length * GAMES_PER_TOKEN,
-    uniquePlayers: uniquePlayers.size,
+    uniquePlayers: playing.length,
     winners,
     noPick,
+    outcomes,
+    gameWins,
+    gameLosses,
+    playersWon,
+    playersNeverWon: playing.length - playersWon,
+    returning,
     perGame,
+    games,
     pairs,
     rewards,
-    perHour,
+    topPrize,
+    slots,
+    busiest,
+    quietest,
+    peak,
+    firstStart,
+    lastFinish,
+    tokensPerHour: openHours >= 0.5 ? done.length / openHours : null,
     avgMinutes,
+    longest: tokenTime(longest),
+    quickest: tokenTime(quickest),
     byType,
     byClass,
+    typeStats,
+    classStats,
     topPlayers,
+    topWinners,
   };
 }
 

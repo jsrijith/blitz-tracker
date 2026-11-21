@@ -210,3 +210,19 @@ label.field { display: block; margin: 12px 0 6px; font-weight: 600; }
   min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;
   background: #c62828; color: #fff; font-size: 12px; line-height: 20px; font-weight: 700;
 }
+
+/* Stats: highlights and tables */
+.kpis.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.kpis.three .value { font-size: 24px; }
+.kpis + h2, .highlights + .kpis { margin-top: 20px; }
+.highlights { padding: 4px 14px; }
+.hl { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 10px 0; }
+.hl + .hl { border-top: 1px solid var(--line); }
+.hl-label { color: var(--muted); font-size: 15px; flex: 0 0 auto; }
+.hl-value { font-weight: 700; text-align: right; overflow-wrap: anywhere; }
+.hl-note { display: block; font-weight: 400; font-size: 14px; color: var(--muted); }
+.table-wrap { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.table th { text-align: left; font-size: 13px; font-weight: 600; color: var(--muted); padding: 0 6px 8px; }
+.table td { padding: 8px 6px; border-top: 1px solid var(--line); }
+.table .num { text-align: right; font-variant-numeric: tabular-nums; }
