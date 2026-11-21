@@ -19,7 +19,7 @@ function sample() {
   d.tokens.push(
     tok("t1", "p1", "g1", "won", "g2", "lost", "pen", "2026-11-28T09:00:00.000Z", "2026-11-28T09:10:00.000Z"),
     tok("t2", "p1", "g2", "lost", "g1", "lost", null, "2026-11-28T09:20:00.000Z", "2026-11-28T09:40:00.000Z"),
-    tok("t3", "p2", "g3", "draw", "g1", "won", "keychain", "2026-11-28T10:00:00.000Z", "2026-11-28T10:15:00.000Z"),
+    tok("t3", "p2", "g3", "lost", "g1", "won", "keychain", "2026-11-28T10:00:00.000Z", "2026-11-28T10:15:00.000Z"),
     tok("t4", "p3", "g1", "won", "g4", "won", null, "2026-11-28T10:30:00.000Z", "2026-11-28T10:45:00.000Z"),
     tok("t5", "p3", "g5", null, "g6", null, null, "2026-11-28T11:00:00.000Z", null), // still in play
   );
@@ -48,7 +48,7 @@ test("finishing needs both results, and a prize only after a win", () => {
   assert.match(checkFinish(d, t, "sticker"), /Everyone/);
   assert.match(checkFinish(d, t, "nope"), /Unknown/);
 
-  t.games[0].result = "draw";
+  t.games[0].result = "lost";
   assert.equal(wonAny(t), false);
   assert.match(checkFinish(d, t, "pen"), /only for a player who won/);
   assert.equal(checkFinish(d, t, null), null);
@@ -108,7 +108,7 @@ test("CSV has a header and one row per finished token", () => {
   assert.match(lines[0], /^token_id,player,player_type,class/);
   const ravi = lines.find((l) => l.startsWith("t3,"));
   assert.ok(ravi.includes('"Mr ""Ravi"", Kumar",teacher'));
-  assert.ok(ravi.includes("Game 3,draw,Game 1,won,yes,Keychain,Sticker"));
+  assert.ok(ravi.includes("Game 3,lost,Game 1,won,yes,Keychain,Sticker"));
   assert.ok(ravi.endsWith(",15.0"));
 });
 
@@ -132,5 +132,7 @@ test("broken backups are refused with a reason", () => {
   assert.throws(bad((d) => { d.tokens[0].games.pop(); }), /2 games/);
   assert.throws(bad((d) => { d.tokens[0].games[0].gameId = "g42"; }), /unknown game/);
   assert.throws(bad((d) => { d.tokens[0].games[0].result = "maybe"; }), /unknown result/);
+  assert.throws(bad((d) => { d.tokens[0].games[0].result = "draw"; }), /unknown result/, "no draws at this stall");
+  assert.throws(bad((d) => { d.players[1].type = "parent"; }), /player is broken/, "only students and teachers");
   assert.throws(bad((d) => { d.tokens[0].rewardId = "gold"; }), /unknown prize/);
 });

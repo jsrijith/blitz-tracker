@@ -17,10 +17,10 @@ works without internet.
 
 1. **Setup**: type in the 8 game names and check the prize list. Do this before the stall opens.
 2. **New token**: when someone hands over a token, type their name. Tap them if they've played
-   before, or add them as a new player (student / teacher / parent / visitor, plus class for
+   before, or add them as a new player (student or teacher, plus class for
    students). Pick their 2 games and tap **Start token**.
 3. **In play**: everyone who is still playing. When someone finishes, tap their card and set
-   Won / Lost / Draw for each game. If they won one, tap the prize they chose. Then tap
+   Won or Lost for each game. If they won one, tap the prize they chose. Then tap
    **Finish token**. Made a mistake? Tap **Undo** on the message at the bottom.
 4. **Log**: every finished token. Tap one to fix or delete it.
 5. **Stats**: tokens, players, games played, win rate per game, prizes given (handy for stock),

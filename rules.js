@@ -3,8 +3,8 @@
 
 export const DATA_VERSION = 1;
 export const GAMES_PER_TOKEN = 2;
-export const PLAYER_TYPES = ["student", "teacher", "parent", "visitor"];
-export const RESULTS = ["won", "lost", "draw"];
+export const PLAYER_TYPES = ["student", "teacher"];
+export const RESULTS = ["won", "lost"];
 
 export function newId() {
   return globalThis.crypto.randomUUID();

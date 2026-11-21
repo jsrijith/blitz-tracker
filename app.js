@@ -209,7 +209,7 @@ function editorHtml() {
     <div class="card picked"><div><div class="name">${esc(p?.name)}</div><div class="small muted">${who(p)} · started ${time(t.startedAt)}</div></div></div>
     ${draft.games.map((g, i) => `
       <h2>${esc(game(g.gameId)?.name)}</h2>
-      <div class="choices three">
+      <div class="choices">
         ${RESULTS.map((r) => `<button class="choice ${r}" data-action="set-result" data-i="${i}" data-r="${r}" aria-pressed="${g.result === r}">${cap(r)}</button>`).join("")}
       </div>`).join("")}
     ${complete ? (won ? `

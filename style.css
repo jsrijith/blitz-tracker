@@ -11,8 +11,6 @@
   --won-soft: #dff1df;
   --lost: #a33a2b;
   --lost-soft: #f7e0dc;
-  --draw: #8a6a12;
-  --draw-soft: #f5ecd2;
   --warn-soft: #fff1c9;
   --warn-ink: #6b4d00;
   --danger: #b3261e;
@@ -35,8 +33,6 @@
     --won-soft: #1f3524;
     --lost: #f0a094;
     --lost-soft: #3d2420;
-    --draw: #e3c46a;
-    --draw-soft: #3a3220;
     --warn-soft: #3d3418;
     --warn-ink: #f3d98a;
     --danger: #f2a49d;
@@ -110,7 +106,6 @@ label.field { display: block; margin: 12px 0 6px; font-weight: 600; }
 
 /* Choice buttons: player type, games, results, prizes */
 .choices { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.choices.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .choice {
   min-height: 60px; padding: 8px 10px;
   border: 2px solid var(--line); border-radius: 12px;
@@ -122,7 +117,6 @@ label.field { display: block; margin: 12px 0 6px; font-weight: 600; }
 .choice .num { display: block; font-size: 13px; font-weight: 500; color: var(--muted); }
 .choice.won[aria-pressed="true"] { border-color: var(--won); background: var(--won-soft); color: var(--won); }
 .choice.lost[aria-pressed="true"] { border-color: var(--lost); background: var(--lost-soft); color: var(--lost); }
-.choice.draw[aria-pressed="true"] { border-color: var(--draw); background: var(--draw-soft); color: var(--draw); }
 
 /* Player search results */
 .list { list-style: none; margin: 0; padding: 0; }
@@ -151,7 +145,6 @@ label.field { display: block; margin: 12px 0 6px; font-weight: 600; }
 }
 .pill.won { background: var(--won-soft); border-color: var(--won); color: var(--won); }
 .pill.lost { background: var(--lost-soft); border-color: var(--lost); color: var(--lost); }
-.pill.draw { background: var(--draw-soft); border-color: var(--draw); color: var(--draw); }
 .pill.prize { background: var(--brand-soft); border-color: var(--brand); }
 
 .empty { text-align: center; padding: 32px 12px; color: var(--muted); }
