@@ -15,7 +15,10 @@ picked, how they did, and which prize they took.
 Open the app's link on the phone, then use **Add to Home screen**. After it has opened once, it also
 works without internet.
 
-1. **Setup**: type in the 8 game names and check the prize list. Do this before the stall opens.
+1. **Setup**: before the stall opens, set the stall's name, type in the 8 game names, and enter
+   how many of each prize you're starting with. The app then counts down what's left, shows it on
+   the prize buttons, and warns at the top when something gets down to 3. Leave a quantity blank to
+   not count that prize. If you restock, add the new ones to the starting number.
 2. **New token**: when someone hands over a token, type their name. Tap them if they've played
    before, or add them as a new player (student or teacher, plus class for
    students). Pick their 2 games and tap **Start token**.
@@ -23,7 +26,7 @@ works without internet.
    Won or Lost for each game. If they won one, tap the prize they chose. Then tap
    **Finish token**. Made a mistake? Tap **Undo** on the message at the bottom.
 4. **Log**: every finished token. Tap one to fix or delete it.
-5. **Stats**: tokens, players, games played, win rate per game, prizes given (handy for stock),
+5. **Stats**: tokens, players, games played, win rate per game, prizes given and left,
    favourite pairs of games, busiest hours, and who played.
 
 ## Back up, because the data lives only on this phone

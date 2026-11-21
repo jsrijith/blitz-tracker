@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   defaultData, checkGamePick, checkFinish, wonAny, resultsComplete, computeStats,
-  csvField, tokensToCsv, parseData, pairKey,
+  csvField, tokensToCsv, parseData, pairKey, givenCount, leftCount, parseStock, DEFAULT_TITLE,
 } from "../rules.js";
 
 function sample() {
@@ -135,4 +135,51 @@ test("broken backups are refused with a reason", () => {
   assert.throws(bad((d) => { d.tokens[0].games[0].result = "draw"; }), /unknown result/, "no draws at this stall");
   assert.throws(bad((d) => { d.players[1].type = "parent"; }), /player is broken/, "only students and teachers");
   assert.throws(bad((d) => { d.tokens[0].rewardId = "gold"; }), /unknown prize/);
+});
+
+test("prizes left: starting quantity minus what finished tokens took", () => {
+  const d = sample();
+  const r = (id) => d.rewards.find((x) => x.id === id);
+  assert.equal(leftCount(d, r("pen")), null, "not counted until a quantity is entered");
+  r("pen").stock = 10;
+  r("sticker").stock = 50;
+  r("keychain").stock = 0;
+  assert.equal(givenCount(d, r("pen")), 1);
+  assert.equal(leftCount(d, r("pen")), 9);
+  assert.equal(leftCount(d, r("sticker")), 46, "one sticker per finished token; the open one hasn't had one");
+  assert.equal(leftCount(d, r("keychain")), -1, "handing out more than counted goes negative");
+  const s = computeStats(d);
+  assert.deepEqual(s.rewards.find((x) => x.rewardId === "pen"), { rewardId: "pen", name: "Pen", count: 1, stock: 10, left: 9 });
+});
+
+test("quantities typed in Setup", () => {
+  assert.equal(parseStock(""), null);
+  assert.equal(parseStock("  "), null);
+  assert.equal(parseStock("25"), 25);
+  assert.equal(parseStock(" 0 "), 0);
+  assert.equal(parseStock("-3"), undefined);
+  assert.equal(parseStock("2.5"), undefined);
+  assert.equal(parseStock("ten"), undefined);
+});
+
+test("data saved before titles and quantities still loads", () => {
+  const d = sample();
+  delete d.title;
+  for (const r of d.rewards) delete r.stock;
+  const loaded = parseData(JSON.stringify(d));
+  assert.equal(loaded.title, DEFAULT_TITLE);
+  assert.ok(loaded.rewards.every((r) => r.stock === null));
+});
+
+test("a title and quantities survive a backup, and bad ones are refused", () => {
+  const d = sample();
+  d.title = "Class 5 Game Corner";
+  d.rewards[1].stock = 30;
+  const loaded = parseData(JSON.stringify(d));
+  assert.equal(loaded.title, "Class 5 Game Corner");
+  assert.equal(loaded.rewards[1].stock, 30);
+  const bad = (change) => () => { const x = sample(); change(x); parseData(JSON.stringify(x)); };
+  assert.throws(bad((x) => { x.rewards[1].stock = -1; }), /quantity/);
+  assert.throws(bad((x) => { x.rewards[1].stock = "5"; }), /quantity/);
+  assert.throws(bad((x) => { x.title = ""; }), /title/);
 });

@@ -5,6 +5,7 @@ export const DATA_VERSION = 1;
 export const GAMES_PER_TOKEN = 2;
 export const PLAYER_TYPES = ["student", "teacher"];
 export const RESULTS = ["won", "lost"];
+export const DEFAULT_TITLE = "Game Stall";
 
 export function newId() {
   return globalThis.crypto.randomUUID();
@@ -13,12 +14,14 @@ export function newId() {
 export function defaultData() {
   return {
     version: DATA_VERSION,
+    title: DEFAULT_TITLE,
     games: Array.from({ length: 8 }, (_, i) => ({ id: `g${i + 1}`, name: `Game ${i + 1}` })),
     rewards: [
-      { id: "sticker", name: "Sticker", everyone: true },
-      { id: "pen", name: "Pen", everyone: false },
-      { id: "crayons", name: "Crayons", everyone: false },
-      { id: "keychain", name: "Keychain", everyone: false },
+      // stock: how many the stall started with, or null if nobody is counting.
+      { id: "sticker", name: "Sticker", everyone: true, stock: null },
+      { id: "pen", name: "Pen", everyone: false, stock: null },
+      { id: "crayons", name: "Crayons", everyone: false, stock: null },
+      { id: "keychain", name: "Keychain", everyone: false, stock: null },
     ],
     players: [],
     tokens: [],
@@ -66,6 +69,29 @@ export function finishedTokens(data) {
   return data.tokens.filter((t) => t.finishedAt);
 }
 
+// ---- Prize stock ----------------------------------------------------------
+
+// How many of a prize have gone out. Everyone's prize goes out once per finished token.
+export function givenCount(data, reward) {
+  const done = finishedTokens(data);
+  return reward.everyone ? done.length : done.filter((t) => t.rewardId === reward.id).length;
+}
+
+// What's left of a prize, or null when no starting quantity was entered.
+// Can go below zero if more were handed out than were counted in.
+export function leftCount(data, reward) {
+  return reward.stock == null ? null : reward.stock - givenCount(data, reward);
+}
+
+// Reads a quantity typed in Setup: a whole number from 0 up, or null for blank.
+// Returns undefined for anything else, so the caller can refuse it.
+export function parseStock(text) {
+  const s = String(text ?? "").trim();
+  if (s === "") return null;
+  if (!/^\d{1,6}$/.test(s)) return undefined;
+  return Number(s);
+}
+
 // ---- Stats ----------------------------------------------------------------
 
 function countBy(items, keyOf) {
@@ -106,11 +132,12 @@ export function computeStats(data) {
     ([key, count]) => ({ names: key.split("+").map(gameName), count }),
   );
 
-  // Rewards everyone gets are handed out once per token; the others once per pick.
   const rewards = data.rewards.map((r) => ({
     rewardId: r.id,
     name: r.name,
-    count: r.everyone ? done.length : done.filter((t) => t.rewardId === r.id).length,
+    count: givenCount(data, r),
+    stock: r.stock ?? null,
+    left: leftCount(data, r),
   }));
   const winners = done.filter(wonAny).length;
   const noPick = done.filter((t) => wonAny(t) && t.rewardId == null).length;
@@ -203,6 +230,12 @@ export function parseData(text) {
   }
   if (!d.games.every((g) => isStr(g.id) && isStr(g.name))) fail("a game has no name");
   if (!d.rewards.every((r) => isStr(r.id) && isStr(r.name) && typeof r.everyone === "boolean")) fail("a prize is broken");
+  for (const r of d.rewards) {
+    if (r.stock === undefined) r.stock = null; // saved before quantities existed
+    if (r.stock !== null && !(Number.isInteger(r.stock) && r.stock >= 0)) fail("a prize quantity is broken");
+  }
+  if (d.title === undefined) d.title = DEFAULT_TITLE; // saved before the title existed
+  if (!isStr(d.title)) fail("the title is broken");
 
   const playerIds = new Set();
   for (const p of d.players) {

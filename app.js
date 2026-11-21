@@ -1,10 +1,12 @@
 import {
   PLAYER_TYPES, RESULTS, newId, defaultData, checkGamePick, checkFinish, wonAny, resultsComplete,
   openTokens, finishedTokens, computeStats, tokensToCsv, parseData,
+  DEFAULT_TITLE, givenCount, leftCount, parseStock,
 } from "./rules.js";
 import { load, save, tokensSinceBackup, askPersistent, shareFile } from "./store.js";
 
 const BACKUP_NAG_EVERY = 20;
+const LOW_STOCK = 3; // warn when this many or fewer of a prize are left
 
 let data = load();
 let saveFailed = false;
@@ -35,6 +37,18 @@ const game = (id) => data.games.find((g) => g.id === id);
 const reward = (id) => data.rewards.find((r) => r.id === id);
 const prizes = () => data.rewards.filter((r) => !r.everyone);
 const everyoneGets = () => data.rewards.filter((r) => r.everyone).map((r) => r.name).join(" + ") || "nothing";
+const everyoneGetsWithStock = () =>
+  data.rewards.filter((r) => r.everyone).map((r) => r.name + (leftCount(data, r) == null ? "" : ` (${leftText(r)})`)).join(" + ") || "nothing";
+const isLow = (r) => { const left = leftCount(data, r); return left != null && left <= LOW_STOCK; };
+function leftText(r) {
+  const left = leftCount(data, r);
+  if (left == null) return "";
+  return left <= 0 ? (left < 0 ? `${-left} over!` : "none left") : `${left} left`;
+}
+function stockLine(r) {
+  const given = givenCount(data, r);
+  return leftCount(data, r) == null ? `${given} given` : `${given} given · ${leftText(r)}`;
+}
 const tokenCount = (playerId) => data.tokens.filter((t) => t.playerId === playerId).length;
 const minutesSince = (iso) => Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
 
@@ -70,6 +84,8 @@ function render() {
   const badge = $("#badge");
   badge.hidden = open === 0;
   badge.textContent = open;
+  $("#title").textContent = data.title;
+  document.title = data.title;
   $("#top-count").textContent = `${finishedTokens(data).length} done · ${open} in play`;
   renderBanner();
 
@@ -84,13 +100,19 @@ function renderBanner() {
     el.className = "banner error";
     el.innerHTML = "<span><b>Not saving!</b> This browser is refusing to store data. Don't use a private tab.</span>";
     el.hidden = false;
-  } else if (since >= BACKUP_NAG_EVERY) {
-    el.className = "banner";
-    el.innerHTML = `<span>${since} tokens since the last backup.</span><button class="btn" data-action="backup">Back up</button>`;
-    el.hidden = false;
-  } else {
-    el.hidden = true;
+    return;
   }
+  const low = data.rewards.filter(isLow);
+  const parts = [];
+  if (low.length) {
+    parts.push(`<span>Running low: ${low.map((r) => `<b>${esc(r.name)}</b> ${leftText(r)}`).join(", ")}</span>`);
+  }
+  if (since >= BACKUP_NAG_EVERY) {
+    parts.push(`<span class="banner-line"><span>${since} tokens since the last backup.</span><button class="btn" data-action="backup">Back up</button></span>`);
+  }
+  el.className = "banner";
+  el.innerHTML = parts.join("");
+  el.hidden = parts.length === 0;
 }
 
 // New token -------------------------------------------------------------
@@ -214,11 +236,11 @@ function editorHtml() {
       </div>`).join("")}
     ${complete ? (won ? `
       <h2>Winner's prize</h2>
-      <p class="small muted">They also get: ${esc(everyoneGets())}</p>
+      <p class="small muted">They also get: ${esc(everyoneGetsWithStock())}</p>
       <div class="choices">
-        ${prizes().map((r) => `<button class="choice" data-action="set-prize" data-id="${r.id}" aria-pressed="${rewardId === r.id}">${esc(r.name)}</button>`).join("")}
+        ${prizes().map((r) => `<button class="choice" data-action="set-prize" data-id="${r.id}" aria-pressed="${rewardId === r.id}">${esc(r.name)}${leftText(r) ? `<span class="left ${isLow(r) ? "low" : ""}">${leftText(r)}</span>` : ""}</button>`).join("")}
         <button class="choice" data-action="set-prize" data-id="" aria-pressed="${rewardId === null}">No prize taken</button>
-      </div>` : `<div class="card" style="margin-top:16px">No wins this time: <b>${esc(everyoneGets())}</b> only.</div>`) : ""}
+      </div>` : `<div class="card" style="margin-top:16px">No wins this time: <b>${esc(everyoneGetsWithStock())}</b> only.</div>`) : ""}
     <p></p>
     <button class="btn primary block" data-action="save-token" ${ready ? "" : "disabled"}>${finishing ? "Finish token" : "Save changes"}</button>
     <p></p>
@@ -270,7 +292,7 @@ function statsHtml() {
     <h2>Win rate by game</h2>
     <div class="card">${barsHtml(s.perGame.filter((g) => g.plays).sort((a, b) => b.winRate - a.winRate).map((g) => ({ label: g.name, value: g.winRate, text: `${pct(g.winRate)} of ${g.plays}` })))}</div>
     <h2>Prizes given</h2>
-    <div class="card">${barsHtml(s.rewards.map((r) => ({ label: r.name, value: r.count })))}
+    <div class="card">${barsHtml(s.rewards.map((r) => ({ label: r.name, value: r.count, text: r.left == null ? r.count : `${r.count} · ${r.left} left` })))}
       ${s.noPick ? `<p class="small muted">${s.noPick} winner${s.noPick === 1 ? "" : "s"} took no prize.</p>` : ""}</div>
     <h2>Favourite pairs</h2>
     <div class="card">${barsHtml(s.pairs.slice(0, 8).map((p) => ({ label: p.names.join(" + "), value: p.count })))}</div>
@@ -290,6 +312,12 @@ function setupHtml() {
   const usedRewards = new Set(data.tokens.map((t) => t.rewardId));
   const since = tokensSinceBackup(data);
   return `
+    <h2>Stall name</h2>
+    <div class="card">
+      <input type="text" data-edit="title" value="${esc(data.title)}" aria-label="Stall name" autocapitalize="words">
+      <p class="small muted" style="margin:8px 0 0">Shown at the top of every screen.</p>
+    </div>
+
     <h2>Back up</h2>
     <div class="card stack">
       <p class="small muted" style="margin:0">Everything is kept only in this phone's browser. ${since ? `<b>${since} token${since === 1 ? "" : "s"} since the last backup.</b>` : "Backed up."}</p>
@@ -307,9 +335,17 @@ function setupHtml() {
 
     <h2>Prizes</h2>
     <div class="card">
-      ${data.rewards.map((r) => `<div class="edit-row">
-        <input type="text" data-edit="reward" data-id="${r.id}" value="${esc(r.name)}" aria-label="Prize name">
-        ${r.everyone ? `<span class="tag">everyone</span>` : usedRewards.has(r.id) ? `<span class="tag">given</span>` : `<button class="btn" data-action="delete-reward" data-id="${r.id}" aria-label="Remove ${esc(r.name)}">✕</button>`}
+      <p class="small muted" style="margin:0 0 12px">Type how many of each you start with, to see how many are left during the day. Leave it blank to not count. Restocked? Add the new ones to the number.</p>
+      ${data.rewards.map((r) => `<div class="prize-edit">
+        <div class="edit-row">
+          <input type="text" data-edit="reward" data-id="${r.id}" value="${esc(r.name)}" aria-label="Prize name">
+          ${r.everyone ? `<span class="tag">everyone</span>` : usedRewards.has(r.id) ? "" : `<button class="btn" data-action="delete-reward" data-id="${r.id}" aria-label="Remove ${esc(r.name)}">✕</button>`}
+        </div>
+        <div class="edit-row">
+          <label class="tag" for="stock-${r.id}">Start with</label>
+          <input type="text" id="stock-${r.id}" data-edit="reward-stock" data-id="${r.id}" value="${r.stock ?? ""}" inputmode="numeric" pattern="[0-9]*" placeholder="–" aria-label="${esc(r.name)}: how many at the start" style="flex:0 0 5.5em">
+          <span class="tag ${isLow(r) ? "low" : ""}" data-left="${r.id}">${stockLine(r)}</span>
+        </div>
       </div>`).join("")}
       <p></p>
       <button class="btn block" data-action="add-reward">+ Add a prize</button>
@@ -443,7 +479,7 @@ const actions = {
   "add-reward": () => {
     const name = prompt("Name of the new prize")?.trim();
     if (!name) return;
-    data.rewards.push({ id: newId(), name, everyone: false });
+    data.rewards.push({ id: newId(), name, everyone: false, stock: null });
     commit();
   },
   "delete-reward": (el) => {
@@ -460,7 +496,7 @@ const actions = {
   "clear-all": () => {
     const typed = prompt('This removes every player and token. Type CLEAR to confirm.');
     if (typed?.trim().toUpperCase() !== "CLEAR") return;
-    const keep = { games: data.games, rewards: data.rewards };
+    const keep = { title: data.title, games: data.games, rewards: data.rewards };
     data = { ...defaultData(), ...keep };
     resetStart();
     ui.editing = null;
@@ -541,6 +577,32 @@ document.addEventListener("change", async (e) => {
   const value = el.value.trim().replace(/\s+/g, " ");
   const kind = el.dataset.edit;
   if (!kind) return;
+  if (kind === "title") {
+    data.title = value || DEFAULT_TITLE;
+    el.value = data.title;
+    saveFailed = !save(data);
+    $("#title").textContent = data.title;
+    document.title = data.title;
+    renderBanner();
+    return;
+  }
+  if (kind === "reward-stock") {
+    const r = reward(el.dataset.id);
+    const stock = parseStock(el.value);
+    if (stock === undefined) {
+      el.value = r.stock ?? "";
+      toast("Type a whole number, like 25.");
+      return;
+    }
+    r.stock = stock;
+    el.value = stock ?? "";
+    saveFailed = !save(data);
+    const line = document.querySelector(`[data-left="${r.id}"]`);
+    line.textContent = stockLine(r);
+    line.classList.toggle("low", isLow(r));
+    renderBanner();
+    return;
+  }
   const target = {
     game: () => data.games.find((g) => g.id === el.dataset.id),
     reward: () => data.rewards.find((r) => r.id === el.dataset.id),
