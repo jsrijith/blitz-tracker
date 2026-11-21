@@ -1,0 +1,7 @@
+{
+  "name": "blitz-tracker",
+  "private": true,
+  "type": "module",
+  "description": "Tells Node the .js files are ES modules, for the tests. Nothing to install.",
+  "scripts": { "test": "node --test tests/" }
+}

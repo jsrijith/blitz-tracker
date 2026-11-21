@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2f6b4f">
+  <title>Game Stall Tracker</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Game Stall</h1>
+    <span class="top-count" id="top-count"></span>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+  <main id="view" aria-live="polite"></main>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <nav class="tabs" aria-label="Screens">
+    <button data-tab="start"><span class="ico" aria-hidden="true">＋</span>New token</button>
+    <button data-tab="play"><span class="ico" aria-hidden="true">▶</span>In play<span class="badge" id="badge" hidden></span></button>
+    <button data-tab="log"><span class="ico" aria-hidden="true">≡</span>Log</button>
+    <button data-tab="stats"><span class="ico" aria-hidden="true">▮</span>Stats</button>
+    <button data-tab="setup"><span class="ico" aria-hidden="true">⚙</span>Setup</button>
+  </nav>
+
+  <noscript>This tracker needs JavaScript turned on.</noscript>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

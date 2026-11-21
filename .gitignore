@@ -1,0 +1,5 @@
+# Real stall data must never be committed: it has children's names in it.
+*.csv
+backup*.json
+*.json.bak
+.DS_Store
