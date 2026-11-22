@@ -298,3 +298,7 @@ label.field { display: block; margin: 12px 0 6px; font-weight: 600; }
 .cell-tags { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .tag-game.long { background: var(--lost-soft); border-color: var(--danger); color: var(--danger); font-weight: 600; }
 .tag-game.prize { background: var(--brand-soft); border-color: var(--brand); color: var(--ink); font-weight: 600; }
+/* Players table tags, in the same colours as the New token buttons */
+.tag-game.free { background: var(--won-soft); border-color: var(--won); color: var(--won); }
+.tag-game.busy { background: var(--warn-soft); border-color: var(--warn-ink); color: var(--warn-ink); font-weight: 600; }
+.tag-game.off { background: var(--bg); border-style: dashed; color: var(--muted); }

@@ -476,11 +476,14 @@ function playerRowHtml(r) {
       else if (tok.leftAt) todo.push(`<span class="tag-game">${name} · ${g.startedAt ? "stopped" : tok.leftReason === "closed" ? "stall closed" : "left"}</span>`);
       else if (g.startedAt) {
         const long = isLongGame(g, Date.now());
-        now.push(`<span class="tag-game ${long ? "long" : "playing"}">${name} · ${minutesSince(g.startedAt)} min</span>`);
+        now.push(`<span class="tag-game ${long ? "long" : "busy"}">${name} · ${minutesSince(g.startedAt)} min</span>`);
       } else if (tok.finishedAt) todo.push(`<span class="tag-game">${name} · not played</span>`);
       else {
+        // Coloured like the New token buttons: green if the game is free now, yellow if in use, grey if off.
         const place = inQueue.indexOf(tok) + 1;
-        todo.push(`<span class="tag-game todo">${name}${place ? ` · ${ordinal(place)} in queue` : ""}</span>`);
+        const state = gameStateClass(g.gameId).replace("game-", "");
+        const where = state === "off" ? "not available" : place ? `${ordinal(place)} in queue` : "";
+        todo.push(`<span class="tag-game ${state}">${name}${where ? ` · ${where}` : ""}</span>`);
       }
     }
     if (!tok.finishedAt && !tok.leftAt && resultsComplete(tok)) now.push(`<span class="tag-game prize">Pick a prize</span>`);
