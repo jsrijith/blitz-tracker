@@ -193,7 +193,7 @@ label.field { display: block; margin: 12px 0 6px; font-weight: 600; }
 
 .tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(6, 1fr);
   background: var(--card); border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom);
 }
@@ -227,19 +227,22 @@ label.field { display: block; margin: 12px 0 6px; font-weight: 600; }
 .table td { padding: 8px 6px; border-top: 1px solid var(--line); }
 .table .num { text-align: right; font-variant-numeric: tabular-nums; }
 
-/* Tables and the waiting line */
+/* Queue and Playing */
 .choice .left.busy { color: var(--warn-ink); }
-.table-card .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
-.table-card .head .name { font-weight: 700; font-size: 18px; }
-.table-card .on-table { margin-bottom: 10px; }
-.table-card .on-table .name-link { font-size: 18px; }
-.table-card .line-list { margin-top: 10px; }
-.name-link {
-  background: none; border: 0; padding: 4px 0; font-weight: 700; color: var(--brand);
-  text-decoration: underline; cursor: pointer; min-height: 36px;
+.queue-card .head, .play-card .head { display: flex; align-items: center; gap: 10px; }
+.queue-card .head .muted, .play-card .head .muted { margin-left: auto; }
+.place {
+  flex: 0 0 auto; width: 32px; height: 32px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--brand-soft); color: var(--brand); font-weight: 700;
 }
-.banner.calling { position: sticky; top: 56px; z-index: 4; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); }
-.banner-line.call { flex-wrap: wrap; }
-.banner-line + .banner-line { padding-top: 10px; border-top: 1px solid currentColor; }
-.banner-btns { display: flex; gap: 8px; margin-left: auto; }
-.banner-btns .btn { min-height: 44px; padding: 8px 14px; }
+.queue-games { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+.queue-games .give { flex: 1 1 140px; }
+.pill.in-use { background: var(--warn-soft); border-color: var(--warn-ink); color: var(--warn-ink); padding: 8px 12px; }
+.queue-games .pill.won, .queue-games .pill.lost { padding: 8px 12px; }
+.play-card .game-name { font-weight: 700; font-size: 20px; }
+.play-card .choices { margin-top: 10px; }
+.name-link {
+  background: none; border: 0; padding: 4px 0; font-weight: 700; font-size: 18px; color: var(--ink);
+  text-decoration: underline; text-decoration-color: var(--line); cursor: pointer; min-height: 36px; text-align: left;
+}

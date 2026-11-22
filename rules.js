@@ -77,72 +77,61 @@ export function finishedTokens(data) {
   return data.tokens.filter((t) => t.finishedAt);
 }
 
-// ---- Tables and the waiting line -------------------------------------------
+// ---- The queue and who is playing ------------------------------------------
 // There is one copy of each game. Each game in a token is in one of three states:
-//   waiting: no startedAt and no result; lineAt is its place in that game's line
+//   waiting: no startedAt and no result
 //   playing: startedAt set, no result yet
 //   done:    result set (endedAt is when)
-// A player plays one game at a time, so a player who is playing is skipped in other lines but
-// keeps their place.
+// A new token goes into the queue. The stall gives the player one of their games when it's free;
+// after it, the player is back in the queue, in the same place, for their other game.
 
 const isPlaying = (g) => g.startedAt != null && g.result == null;
 const isWaiting = (g) => g.startedAt == null && g.result == null;
-const lineTime = (token, g) => g.lineAt ?? token.startedAt;
+const byRegistration = (a, b) => a.startedAt.localeCompare(b.startedAt) || a.id.localeCompare(b.id);
 
 export function isBusy(token) {
   return token.games.some(isPlaying);
 }
 
-// Who is on a game, and who is waiting for it, first in line first.
+// Who is on a game (or null), and which queued tokens still want it, earliest first.
 export function gameState(data, gameId) {
   let playing = null;
-  const line = [];
-  for (const token of openTokens(data)) {
+  const wanted = [];
+  for (const token of openTokens(data).sort(byRegistration)) {
     token.games.forEach((g, index) => {
       if (g.gameId !== gameId) return;
       if (isPlaying(g) && !playing) playing = { token, index };
-      else if (isWaiting(g)) line.push({ token, index });
+      else if (isWaiting(g) && !isBusy(token)) wanted.push({ token, index });
     });
   }
-  line.sort((a, b) => lineTime(a.token, a.token.games[a.index]).localeCompare(lineTime(b.token, b.token.games[b.index]))
-    || a.token.id.localeCompare(b.token.id));
-  return { playing, line };
+  return { playing, wanted };
 }
 
-// The player who should go on a free game now: the first in line who isn't playing something else.
-function firstFree(state) {
-  return state.playing ? null : state.line.find((x) => !isBusy(x.token)) ?? null;
+// Tokens waiting for their next game, in the order they registered.
+export function queue(data) {
+  return openTokens(data).filter((t) => !isBusy(t) && t.games.some(isWaiting)).sort(byRegistration);
 }
 
-// Every free game with someone ready to play it.
-export function nextUp(data) {
-  return data.games
-    .map((g) => ({ gameId: g.id, next: firstFree(gameState(data, g.id)) }))
-    .filter((x) => x.next)
-    .map((x) => ({ gameId: x.gameId, token: x.next.token, index: x.next.index }));
+// Tokens on a game now, the one that started first first.
+export function playingNow(data) {
+  const startOf = (t) => t.games.find(isPlaying).startedAt;
+  return openTokens(data).filter(isBusy).sort((a, b) => startOf(a).localeCompare(startOf(b)));
 }
 
-// A new token. The player is at the stall, so the first of their games that nobody else can take
-// right now starts straight away; the other waits in its line.
-// Returns the token (already added to data), which game started (index or null), and the place in
-// line (1 = next) for each game, or null for the one that started.
+// Can this token be given this game now?
+export function canGive(data, token, index) {
+  const g = token.games[index];
+  return !token.finishedAt && isWaiting(g) && !isBusy(token) && !gameState(data, g.gameId).playing;
+}
+
+// A new token: into the queue. Returns the token (already added to data) and its place in the queue.
 export function startToken(data, playerId, gameIds, now) {
   const token = {
     id: newId(), playerId, startedAt: now, rewardId: null, finishedAt: null,
-    games: gameIds.map((gameId) => ({ gameId, result: null, startedAt: null, endedAt: null, lineAt: now })),
+    games: gameIds.map((gameId) => ({ gameId, result: null, startedAt: null, endedAt: null })),
   };
-  const canStart = gameIds.map((id) => {
-    const s = gameState(data, id);
-    return !s.playing && !firstFree(s);
-  });
   data.tokens.push(token);
-  const started = canStart.indexOf(true);
-  if (started >= 0) startGame(token, started, now);
-  const places = token.games.map((g, i) => {
-    if (i === started) return null;
-    return gameState(data, g.gameId).line.findIndex((x) => x.token === token) + 1;
-  });
-  return { token, started: started >= 0 ? started : null, places };
+  return { token, place: queue(data).indexOf(token) + 1 };
 }
 
 export function startGame(token, index, now) {
@@ -156,11 +145,6 @@ export function endGame(token, index, result, now) {
   const g = token.games[index];
   g.result = result;
   g.endedAt = now;
-}
-
-// "Not here": to the back of that game's line.
-export function sendToBack(token, index, now) {
-  token.games[index].lineAt = now;
 }
 
 // Minutes the player stood waiting: before their first game, and between the two.
@@ -480,8 +464,8 @@ export function parseData(text) {
     for (const g of t.games) {
       if (!gameIds.has(g.gameId)) fail("a token names an unknown game");
       if (g.result != null && !RESULTS.includes(g.result)) fail("a token has an unknown result");
-      for (const key of ["startedAt", "endedAt", "lineAt"]) {
-        if (g[key] === undefined) g[key] = null; // saved before the waiting line existed
+      for (const key of ["startedAt", "endedAt"]) {
+        if (g[key] === undefined) g[key] = null; // saved before the queue existed
         if (g[key] !== null && !isTime(g[key])) fail("a token has a bad game time");
       }
     }

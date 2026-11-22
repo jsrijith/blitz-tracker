@@ -20,19 +20,18 @@ works without internet.
    the prize buttons, and warns at the top when something gets down to 3. Leave a quantity blank to
    not count that prize. If you restock, add the new ones to the starting number.
 2. **New token**: when someone hands over a token, type their name. Tap them if they've played
-   before, or add them as a new player (student or teacher, plus class for
-   students). Pick their 2 games and tap **Start token**. Each game button shows who is playing
-   it and how many are waiting. A game in use can still be picked: the message at the bottom
-   says which game to play now and where they are in line for the other.
-3. **In play**: one card per game in use, with who is on it and who is waiting. Tap **Won** or
-   **Lost** as soon as a game ends, which frees it. When a waiting player can go, a yellow box at
-   the top says "Chess is free: call Bob", and the phone buzzes and beeps. Tap **Started** when
-   they sit down, or **Not here** to move them to the back of that line. Someone playing their
-   other game keeps their place but isn't called until they're done. When both of a player's
-   games are done, pick their prize and tap **Finish token**. Made a mistake? Tap **Undo** on the
-   message at the bottom. Tap a name to change or cancel a token.
-4. **Log**: every finished token. Tap one to fix or delete it.
-5. **Stats**: highlights first (busiest half hour, most players at once, most and least popular
+   before, or add them as a new player (student or teacher, plus class for students). Pick their 2
+   games and tap **Start token**. Each game button shows who is playing it. A game in use can still
+   be picked: every token goes into the queue.
+3. **Queue**: everyone waiting, in the order they registered. Each player's games show as
+   **Give Chess** when the game is free, or "Chess · Alice playing" when it isn't. Tap Give when you
+   hand them the game. The number on the Queue tab is how many players can be given a game now.
+4. **Playing**: who is on which game. When a player says they're done, tap **Won** or **Lost**.
+   After their first game they go back to the queue, in the same place, for their other game.
+   After their second, pick their prize and tap **Finish token**. Made a mistake? Tap **Undo** on
+   the message at the bottom. Tap a name to change or cancel a token.
+5. **Log**: every finished token. Tap one to fix or delete it.
+6. **Stats**: highlights first (busiest half hour, most players at once, most and least popular
    game, hardest and easiest game, favourite pair and prize, most active class, top winner), then
    how players did (won both, won one, lost both), busy times, plays and win rate per game,
    students against teachers, classes, prizes given and left, and the players with the most wins

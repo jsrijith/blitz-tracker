@@ -16,7 +16,7 @@ function sample() {
   );
   const tok = (id, playerId, a, ra, b, rb, rewardId, start, end) => ({
     id, playerId, startedAt: start, finishedAt: end, rewardId,
-    games: [a, b].map((gameId, i) => ({ gameId, result: [ra, rb][i], startedAt: null, endedAt: null, lineAt: null })),
+    games: [a, b].map((gameId, i) => ({ gameId, result: [ra, rb][i], startedAt: null, endedAt: null })),
   });
   d.tokens.push(
     tok("t1", "p1", "g1", "won", "g2", "lost", "pen", "2026-11-28T09:00:00.000Z", "2026-11-28T09:10:00.000Z"),

@@ -2,7 +2,7 @@ import {
   PLAYER_TYPES, RESULTS, newId, defaultData, checkGamePick, checkFinish, wonAny, resultsComplete,
   openTokens, finishedTokens, computeStats, tokensToCsv, parseData,
   DEFAULT_TITLE, givenCount, leftCount, parseStock, SLOT_MINUTES, MIN_PLAYS_FOR_RATE,
-  gameState, nextUp, startToken, startGame, endGame, sendToBack, isBusy, waitMinutes,
+  gameState, queue, playingNow, canGive, startToken, startGame, endGame, waitMinutes,
 } from "./rules.js";
 import { load, save, tokensSinceBackup, askPersistent, shareFile } from "./store.js";
 
@@ -81,20 +81,25 @@ function render() {
     if (b.dataset.tab === ui.tab) b.setAttribute("aria-current", "page");
     else b.removeAttribute("aria-current");
   });
-  const open = openTokens(data).length;
-  const badge = $("#badge");
-  badge.hidden = open === 0;
-  badge.textContent = open;
+  const inQueue = queue(data);
+  const canGo = inQueue.filter((t) => t.games.some((_, i) => canGive(data, t, i))).length;
+  const playing = playingNow(data).length;
+  const prizes = openTokens(data).filter(resultsComplete).length;
+  setBadge("#badge-queue", canGo);
+  setBadge("#badge-play", playing + prizes);
   $("#title").textContent = data.title;
   document.title = data.title;
-  const openList = openTokens(data);
-  const playing = openList.filter((t) => isBusy(t) || resultsComplete(t)).length;
-  const waiting = openList.length - playing;
-  $("#top-count").textContent = `${finishedTokens(data).length} done · ${playing} playing${waiting ? ` · ${waiting} waiting` : ""}`;
+  $("#top-count").textContent = `${finishedTokens(data).length} done · ${playing} playing · ${inQueue.length} in queue`;
   renderBanner();
 
   if (ui.editing) view.innerHTML = editorHtml();
-  else view.innerHTML = { start: startHtml, play: playHtml, log: logHtml, stats: statsHtml, setup: setupHtml }[ui.tab]();
+  else view.innerHTML = { start: startHtml, queue: queueHtml, play: playHtml, log: logHtml, stats: statsHtml, setup: setupHtml }[ui.tab]();
+}
+
+function setBadge(sel, n) {
+  const badge = $(sel);
+  badge.hidden = n === 0;
+  badge.textContent = n;
 }
 
 function renderBanner() {
@@ -106,14 +111,7 @@ function renderBanner() {
     el.hidden = false;
     return;
   }
-  const up = nextUp(data);
-  alertIfNew(up);
-  const parts = up.map((x) => `<span class="banner-line call">
-      <span><b>${esc(game(x.gameId)?.name)}</b> is free: call <b>${esc(player(x.token.playerId)?.name)}</b></span>
-      <span class="banner-btns">
-        <button class="btn primary" data-action="call-started" data-id="${x.token.id}" data-i="${x.index}">Started</button>
-        <button class="btn" data-action="not-here" data-id="${x.token.id}" data-i="${x.index}">Not here</button>
-      </span></span>`);
+  const parts = [];
   const low = data.rewards.filter(isLow);
   if (low.length) {
     parts.push(`<span>Running low: ${low.map((r) => `<b>${esc(r.name)}</b> ${leftText(r)}`).join(", ")}</span>`);
@@ -121,47 +119,9 @@ function renderBanner() {
   if (since >= BACKUP_NAG_EVERY) {
     parts.push(`<span class="banner-line"><span>${since} tokens since the last backup.</span><button class="btn" data-action="backup">Back up</button></span>`);
   }
-  el.className = up.length ? "banner calling" : "banner";
+  el.className = "banner";
   el.innerHTML = parts.join("");
   el.hidden = parts.length === 0;
-}
-
-// A buzz and a beep when someone new can go on a game. Only new calls alert, not every redraw,
-// and not the ones already showing when the page opens.
-let announced = null;
-function alertIfNew(up) {
-  const keys = new Set(up.map((x) => `${x.token.id}:${x.index}`));
-  const fresh = announced && [...keys].some((k) => !announced.has(k));
-  announced = keys;
-  if (!fresh) return;
-  try { navigator.vibrate?.([200, 100, 200]); } catch {}
-  beep();
-}
-
-// Browsers only allow sound after a tap, so the audio is set up on the first one.
-let audio = null;
-document.addEventListener("pointerdown", () => {
-  try {
-    audio ??= new (window.AudioContext || window.webkitAudioContext)();
-    if (audio.state === "suspended") audio.resume();
-  } catch {}
-}, { capture: true });
-
-function beep() {
-  try {
-    if (!audio) return;
-    const t = audio.currentTime;
-    for (const start of [0, 0.25]) {
-      const osc = audio.createOscillator();
-      const gain = audio.createGain();
-      osc.frequency.value = 880;
-      gain.gain.setValueAtTime(0.25, t + start);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + start + 0.2);
-      osc.connect(gain).connect(audio.destination);
-      osc.start(t + start);
-      osc.stop(t + start + 0.2);
-    }
-  } catch {}
 }
 
 // New token -------------------------------------------------------------
@@ -195,23 +155,11 @@ function startHtml() {
 
 function tableStatusHtml(gameId) {
   const s = gameState(data, gameId);
-  if (!s.playing && !s.line.length) return `<span class="left">free</span>`;
-  const on = s.playing ? `${esc(player(s.playing.token.playerId)?.name)} playing` : "free";
-  return `<span class="left busy">${on}${s.line.length ? ` · ${s.line.length} waiting` : ""}</span>`;
+  if (!s.playing) return `<span class="left">free${s.wanted.length ? ` · ${s.wanted.length} in queue` : ""}</span>`;
+  return `<span class="left busy">${esc(player(s.playing.token.playerId)?.name)} playing${s.wanted.length ? ` · ${s.wanted.length} in queue` : ""}</span>`;
 }
 
 const ordinal = (n) => `${n}${n % 10 === 1 && n % 100 !== 11 ? "st" : n % 10 === 2 && n % 100 !== 12 ? "nd" : n % 10 === 3 && n % 100 !== 13 ? "rd" : "th"}`;
-
-// What the toast tells the player after Start token.
-function startPlanText(name, result) {
-  const g = (i) => game(result.token.games[i].gameId)?.name;
-  const waitFor = (i) => {
-    const s = gameState(data, result.token.games[i].gameId);
-    return s.playing || result.places[i] > 1 ? `${g(i)} (${ordinal(result.places[i])} in line)` : g(i);
-  };
-  if (result.started != null) return `${name}: play ${g(result.started)} now, then ${waitFor(1 - result.started)}.`;
-  return `${name} waits: ${ordinal(result.places[0])} in line for ${g(0)}, ${ordinal(result.places[1])} for ${g(1)}.`;
-}
 
 function playerMatches() {
   const q = ui.search.trim().toLowerCase();
@@ -277,38 +225,56 @@ function tokenCardHtml(t, showTime) {
   </button>`;
 }
 
-function tableCardHtml(gameId, st) {
-  const nameBtn = (t) => `<button class="name-link" data-action="edit-token" data-id="${t.id}">${esc(player(t.playerId)?.name)}</button>`;
-  const lineHtml = st.line.map(({ token }) => {
-    const on = token.games.find((g) => g.startedAt && !g.result);
-    return nameBtn(token) + (on ? ` <span class="muted">(on ${esc(game(on.gameId)?.name)})</span>` : "");
-  }).join(", ");
-  const p = st.playing;
-  return `<div class="card table-card">
-    <div class="head"><span class="name">${esc(game(gameId)?.name)}</span>
-      <span class="muted small">${p ? `${minutesSince(p.token.games[p.index].startedAt)} min` : "free"}</span></div>
-    ${p ? `<div class="on-table">${nameBtn(p.token)} <span class="small muted">${who(player(p.token.playerId))}</span></div>
-      <div class="choices">
-        ${RESULTS.map((r) => `<button class="choice ${r}" data-action="end-game" data-id="${p.token.id}" data-i="${p.index}" data-r="${r}">${cap(r)}</button>`).join("")}
-      </div>` : ""}
-    ${st.line.length ? `<div class="small line-list"><b>Waiting:</b> ${lineHtml}</div>` : ""}
-  </div>`;
+const nameBtn = (t) => `<button class="name-link" data-action="edit-token" data-id="${t.id}">${esc(player(t.playerId)?.name)}</button>`;
+
+function queueHtml() {
+  const list = queue(data);
+  if (!list.length) return `<div class="empty">Nobody is waiting.<br><br><button class="btn primary" data-tab="start">New token</button></div>`;
+  return `
+    <h2>Queue <span class="muted small">(${list.length})</span></h2>
+    <p class="small muted">First come, first served. Give a player a game when it's free.</p>
+    ${list.map((t, n) => {
+      const p = player(t.playerId);
+      const games = t.games.map((g, i) => {
+        const name = esc(game(g.gameId)?.name);
+        if (g.result) return `<span class="pill ${g.result}">${name} · ${cap(g.result)}</span>`;
+        if (canGive(data, t, i)) return `<button class="btn primary give" data-action="give" data-id="${t.id}" data-i="${i}">Give ${name}</button>`;
+        const on = gameState(data, g.gameId).playing;
+        return `<span class="pill in-use">${name} · ${esc(player(on?.token.playerId)?.name)} playing</span>`;
+      }).join("");
+      return `<div class="card queue-card">
+        <div class="head"><span class="place">${n + 1}</span>${nameBtn(t)}
+          <span class="muted small">${minutesSince(t.startedAt)} min</span></div>
+        <div class="small muted">${who(p)}</div>
+        <div class="queue-games">${games}</div>
+      </div>`;
+    }).join("")}
+  `;
 }
 
 function playHtml() {
-  const open = openTokens(data).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-  if (!open.length) return `<div class="empty">Nobody is playing right now.<br><br><button class="btn primary" data-tab="start">Start a token</button></div>`;
-  const ready = open.filter(resultsComplete);
-  const tables = data.games.map((g) => ({ g, st: gameState(data, g.id) }));
-  const used = tables.filter((x) => x.st.playing || x.st.line.length);
-  const free = tables.filter((x) => !x.st.playing && !x.st.line.length);
+  const playing = playingNow(data);
+  const ready = openTokens(data).filter(resultsComplete).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  if (!playing.length && !ready.length) {
+    return `<div class="empty">Nobody is playing right now.<br><br><button class="btn primary" data-tab="queue">Go to the queue</button></div>`;
+  }
   return `
     ${ready.length ? `<h2>Pick a prize</h2><p class="small muted">Both games done. Tap to finish the token.</p>
       ${ready.map((t) => tokenCardHtml(t, false)).join("")}` : ""}
-    <h2>Tables</h2>
-    <p class="small muted">Tap Won or Lost when a game ends. Tap a name to change or cancel their token.</p>
-    ${used.map((x) => tableCardHtml(x.g.id, x.st)).join("")}
-    ${free.length ? `<p class="small muted">Free, nobody waiting: ${esc(nameList(free.map((x) => x.g.name), 8))}</p>` : ""}
+    ${playing.length ? `<h2>Playing now <span class="muted small">(${playing.length})</span></h2>
+    <p class="small muted">When a player says they're done, tap Won or Lost.</p>
+    ${playing.map((t) => {
+      const i = t.games.findIndex((g) => g.startedAt && !g.result);
+      const g = t.games[i];
+      return `<div class="card play-card">
+        <div class="head"><span class="game-name">${esc(game(g.gameId)?.name)}</span>
+          <span class="muted small">${minutesSince(g.startedAt)} min</span></div>
+        <div>${nameBtn(t)} <span class="small muted">${who(player(t.playerId))}</span></div>
+        <div class="choices">
+          ${RESULTS.map((r) => `<button class="choice ${r}" data-action="end-game" data-id="${t.id}" data-i="${i}" data-r="${r}">${cap(r)}</button>`).join("")}
+        </div>
+      </div>`;
+    }).join("")}` : ""}
   `;
 }
 
@@ -579,10 +545,12 @@ const actions = {
     const error = checkGamePick(data, ui.picked);
     if (error) return toast(error);
     const name = player(ui.playerId).name;
-    const result = startToken(data, ui.playerId, ui.picked, nowIso());
+    const { place } = startToken(data, ui.playerId, ui.picked, nowIso());
     resetStart();
+    ui.tab = "queue";
     commit();
-    toast(startPlanText(name, result), null, 8000);
+    window.scrollTo(0, 0);
+    toast(`${name} is ${ordinal(place)} in the queue.`, null, 4000);
   },
   "edit-token": (el) => {
     const t = data.tokens.find((x) => x.id === el.dataset.id);
@@ -625,31 +593,22 @@ const actions = {
     if (resultsComplete(t)) ui.editing = { tokenId: t.id, results: t.games.map((g) => g.result), rewardId: undefined };
     commit();
     if (ui.editing) window.scrollTo(0, 0);
-    toast(`${player(t.playerId)?.name} ${el.dataset.r} ${game(t.games[i].gameId)?.name}.`, () => {
+    const left = t.games.find((g) => !g.result);
+    const next = left ? ` Back in the queue for ${game(left.gameId)?.name}.` : "";
+    toast(`${player(t.playerId)?.name} ${el.dataset.r} ${game(t.games[i].gameId)?.name}.${next}`, () => {
       t.games = before;
       ui.editing = null;
       commit();
     });
   },
-  "call-started": (el) => {
+  give: (el) => {
     const t = data.tokens.find((x) => x.id === el.dataset.id);
     const i = Number(el.dataset.i);
-    if (!nextUp(data).some((x) => x.token === t && x.index === i)) return render();
+    if (!canGive(data, t, i)) return render();
     startGame(t, i, nowIso());
     commit();
-    toast(`${player(t.playerId)?.name} is on ${game(t.games[i].gameId)?.name}.`, () => {
+    toast(`${player(t.playerId)?.name} is playing ${game(t.games[i].gameId)?.name}.`, () => {
       t.games[i].startedAt = null;
-      commit();
-    });
-  },
-  "not-here": (el) => {
-    const t = data.tokens.find((x) => x.id === el.dataset.id);
-    const i = Number(el.dataset.i);
-    const before = t.games[i].lineAt;
-    sendToBack(t, i, nowIso());
-    commit();
-    toast(`${player(t.playerId)?.name} moved to the back of the line.`, () => {
-      t.games[i].lineAt = before;
       commit();
     });
   },
@@ -825,7 +784,7 @@ document.addEventListener("change", async (e) => {
 
 // Keep the minutes on the In play cards current.
 setInterval(() => {
-  if (ui.tab === "play" && !ui.editing) render();
+  if ((ui.tab === "play" || ui.tab === "queue") && !ui.editing) render();
 }, 30000);
 
 render();
