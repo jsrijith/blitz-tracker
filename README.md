@@ -26,6 +26,8 @@ works without internet.
 3. **Queue**: everyone waiting, in the order they registered. Each player's games show as
    **Give Chess** when the game is free, or "Chess · Alice playing" when it isn't. Tap Give when you
    hand them the game. The number on the Queue tab is how many players can be given a game now.
+   Rather not wait? Tap **Change** next to a game to swap it for another one. They keep their
+   place in the queue. Only a game they haven't started can be changed.
 4. **Playing**: who is on which game. When a player says they're done, tap **Won** or **Lost**.
    After their first game they go back to the queue, in the same place, for their other game.
    After their second, pick their prize and tap **Finish token**. Made a mistake? Tap **Undo** on

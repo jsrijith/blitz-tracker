@@ -2,7 +2,7 @@ import {
   PLAYER_TYPES, RESULTS, newId, defaultData, checkGamePick, checkFinish, wonAny, resultsComplete,
   openTokens, finishedTokens, computeStats, tokensToCsv, parseData,
   DEFAULT_TITLE, givenCount, leftCount, parseStock, SLOT_MINUTES, MIN_PLAYS_FOR_RATE,
-  gameState, queue, playingNow, canGive, startToken, startGame, endGame, waitMinutes,
+  gameState, queue, playingNow, canGive, startToken, startGame, endGame, waitMinutes, checkChange, changeGame,
 } from "./rules.js";
 import { load, save, tokensSinceBackup, askPersistent, shareFile } from "./store.js";
 
@@ -19,6 +19,7 @@ const ui = {
   newPlayer: null,       // { name, type, cls } while the form is open
   picked: [],            // game ids picked for a new token
   editing: null,         // { tokenId, results: [r, r], rewardId: id | null | undefined }
+  changing: null,        // { tokenId, index } while a queued player picks a different game
   logFilter: "",
 };
 
@@ -93,6 +94,7 @@ function render() {
   renderBanner();
 
   if (ui.editing) view.innerHTML = editorHtml();
+  else if (ui.changing) view.innerHTML = changeHtml();
   else view.innerHTML = { start: startHtml, queue: queueHtml, play: playHtml, log: logHtml, stats: statsHtml, setup: setupHtml }[ui.tab]();
 }
 
@@ -237,10 +239,11 @@ function queueHtml() {
       const p = player(t.playerId);
       const games = t.games.map((g, i) => {
         const name = esc(game(g.gameId)?.name);
-        if (g.result) return `<span class="pill ${g.result}">${name} · ${cap(g.result)}</span>`;
-        if (canGive(data, t, i)) return `<button class="btn primary give" data-action="give" data-id="${t.id}" data-i="${i}">Give ${name}</button>`;
+        if (g.result) return `<div class="queue-game"><span class="pill ${g.result}">${name} · ${cap(g.result)}</span></div>`;
+        const change = `<button class="btn change" data-action="change-open" data-id="${t.id}" data-i="${i}">Change</button>`;
+        if (canGive(data, t, i)) return `<div class="queue-game"><button class="btn primary give" data-action="give" data-id="${t.id}" data-i="${i}">Give ${name}</button>${change}</div>`;
         const on = gameState(data, g.gameId).playing;
-        return `<span class="pill in-use">${name} · ${esc(player(on?.token.playerId)?.name)} playing</span>`;
+        return `<div class="queue-game"><span class="pill in-use">${name} · ${esc(player(on?.token.playerId)?.name)} playing</span>${change}</div>`;
       }).join("");
       return `<div class="card queue-card">
         <div class="head"><span class="place">${n + 1}</span>${nameBtn(t)}
@@ -249,6 +252,28 @@ function queueHtml() {
         <div class="queue-games">${games}</div>
       </div>`;
     }).join("")}
+  `;
+}
+
+// A queued player swaps a game they're waiting for.
+function changeHtml() {
+  const t = data.tokens.find((x) => x.id === ui.changing.tokenId);
+  const i = ui.changing.index;
+  const old = game(t.games[i].gameId);
+  const other = t.games[1 - i];
+  return `
+    <button class="btn link" data-action="change-close">‹ Back</button>
+    <div class="card picked"><div><div class="name">${esc(player(t.playerId)?.name)}</div>
+      <div class="small muted">Instead of <b>${esc(old?.name)}</b>. Their other game: ${esc(game(other.gameId)?.name)}</div></div></div>
+    <h2>Pick a different game</h2>
+    <p class="small muted">They keep their place in the queue.</p>
+    <div class="choices">
+      ${data.games.map((g, n) => {
+        const ok = !checkChange(data, t, i, g.id);
+        return `<button class="choice" data-action="change-pick" data-id="${g.id}" ${ok ? "" : "disabled"}>
+          <span class="num">${n + 1}</span>${esc(g.name)}${ok ? tableStatusHtml(g.id) : `<span class="left">${g.id === old?.id ? "now" : "their other game"}</span>`}</button>`;
+      }).join("")}
+    </div>
   `;
 }
 
@@ -585,6 +610,27 @@ const actions = {
       commit();
     });
   },
+  "change-open": (el) => {
+    ui.changing = { tokenId: el.dataset.id, index: Number(el.dataset.i) };
+    render();
+    window.scrollTo(0, 0);
+  },
+  "change-close": () => { ui.changing = null; render(); },
+  "change-pick": (el) => {
+    const t = data.tokens.find((x) => x.id === ui.changing.tokenId);
+    const i = ui.changing.index;
+    const error = checkChange(data, t, i, el.dataset.id);
+    if (error) return toast(error);
+    const before = t.games[i].gameId;
+    changeGame(t, i, el.dataset.id);
+    ui.changing = null;
+    commit();
+    toast(`${player(t.playerId)?.name}: ${game(el.dataset.id)?.name} instead of ${game(before)?.name}.`, () => {
+      if (t.games[i].startedAt) return toast("Too late to undo: they've started that game.");
+      t.games[i].gameId = before;
+      commit();
+    });
+  },
   "end-game": (el) => {
     const t = data.tokens.find((x) => x.id === el.dataset.id);
     const i = Number(el.dataset.i);
@@ -684,6 +730,7 @@ document.addEventListener("click", (e) => {
   if (tab) {
     ui.tab = tab.dataset.tab;
     ui.editing = null;
+    ui.changing = null;
     render();
     window.scrollTo(0, 0);
     return;

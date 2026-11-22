@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   defaultData, gameState, queue, playingNow, canGive, startToken, startGame, endGame, isBusy, waitMinutes,
+  checkChange, changeGame,
   computeStats, tokensToCsv, parseData,
 } from "../rules.js";
 
@@ -132,4 +133,33 @@ test("a token saved before the queue existed loads, and is in the queue", () => 
   const back = parseData(JSON.stringify(d));
   assert.equal(back.tokens[0].games[0].startedAt, null);
   assert.deepEqual(names(queue(back)), ["Alice"]);
+});
+
+test("a player in the queue can change a game they haven't started, and keeps their place", () => {
+  const d = stall();
+  const a = startToken(d, "Alice", ["g1", "g2"], at(0)).token;
+  const b = startToken(d, "Bob", ["g1", "g3"], at(1)).token;
+  startGame(a, 0, at(2));
+  assert.equal(canGive(d, b, 0), false, "Alice has g1");
+
+  assert.equal(checkChange(d, b, 0, "g4"), null);
+  changeGame(b, 0, "g4");
+  assert.equal(b.games[0].gameId, "g4");
+  assert.equal(canGive(d, b, 0), true, "g4 is free");
+
+  startToken(d, "Carol", ["g5", "g6"], at(3));
+  assert.deepEqual(names(queue(d)), ["Bob", "Carol"], "Bob kept his place");
+});
+
+test("a change is refused for the same game twice, a game started or played, or an unknown game", () => {
+  const d = stall();
+  const a = startToken(d, "Alice", ["g1", "g2"], at(0)).token;
+  assert.match(checkChange(d, a, 0, "g2"), /already have/);
+  assert.match(checkChange(d, a, 0, "g1"), /already have/);
+  assert.match(checkChange(d, a, 0, "g99"), /Unknown/);
+  startGame(a, 0, at(1));
+  assert.match(checkChange(d, a, 0, "g3"), /haven't started/);
+  endGame(a, 0, "won", at(5));
+  assert.match(checkChange(d, a, 0, "g3"), /haven't started/);
+  assert.equal(checkChange(d, a, 1, "g3"), null, "the second game can still change");
 });

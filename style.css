@@ -236,8 +236,10 @@ label.field { display: block; margin: 12px 0 6px; font-weight: 600; }
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--brand-soft); color: var(--brand); font-weight: 700;
 }
-.queue-games { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
-.queue-games .give { flex: 1 1 140px; }
+.queue-games { display: grid; gap: 8px; margin-top: 10px; }
+.queue-game { display: flex; gap: 8px; align-items: center; }
+.queue-game .give, .queue-game .pill { flex: 1; text-align: center; }
+.queue-game .change { flex: 0 0 auto; min-height: 44px; padding: 8px 12px; font-size: 15px; }
 .pill.in-use { background: var(--warn-soft); border-color: var(--warn-ink); color: var(--warn-ink); padding: 8px 12px; }
 .queue-games .pill.won, .queue-games .pill.lost { padding: 8px 12px; }
 .play-card .game-name { font-weight: 700; font-size: 20px; }

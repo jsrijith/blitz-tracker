@@ -134,6 +134,20 @@ export function startToken(data, playerId, gameIds, now) {
   return { token, place: queue(data).indexOf(token) + 1 };
 }
 
+// Returns an error message, or null if a queued player may swap this game for newGameId.
+export function checkChange(data, token, index, newGameId) {
+  const g = token.games[index];
+  if (!g || !isWaiting(g)) return "Only a game they haven't started can be changed.";
+  if (!data.games.some((x) => x.id === newGameId)) return "Unknown game.";
+  if (token.games.some((x) => x.gameId === newGameId)) return "They already have that game.";
+  return null;
+}
+
+// Swaps a game the player is still waiting for. Their place in the queue stays the same.
+export function changeGame(token, index, newGameId) {
+  token.games[index].gameId = newGameId;
+}
+
 export function startGame(token, index, now) {
   const g = token.games[index];
   g.startedAt = now;
