@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   defaultData, checkGamePick, checkFinish, wonAny, resultsComplete, computeStats,
-  csvField, tokensToCsv, parseData, pairKey, givenCount, leftCount, parseStock, DEFAULT_TITLE,
+  newId, csvField, tokensToCsv, parseData, pairKey, givenCount, leftCount, parseStock, DEFAULT_TITLE,
 } from "../rules.js";
 
 function sample() {
@@ -257,4 +257,16 @@ test("winners, token times and the favourite prize", () => {
   assert.deepEqual(s.longest, { name: "Asha", minutes: 20 });
   assert.deepEqual(s.quickest, { name: "Asha", minutes: 10 });
   assert.deepEqual(s.topPrize.map((r) => r.name), ["Pen", "Keychain"]);
+});
+
+test("ids still work where randomUUID is missing (plain http at an IP address)", () => {
+  const saved = globalThis.crypto.randomUUID;
+  Object.defineProperty(globalThis.crypto, "randomUUID", { value: undefined, configurable: true });
+  try {
+    const a = newId();
+    assert.match(a, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    assert.notEqual(a, newId());
+  } finally {
+    Object.defineProperty(globalThis.crypto, "randomUUID", { value: saved, configurable: true });
+  }
 });
