@@ -15,6 +15,7 @@ let saveFailed = false;
 const ui = {
   tab: "start",
   settingsView: "setup", // "setup" or "stats", inside the Settings tab
+  logView: "players",    // "players" or "tokens", inside the Log tab
   search: "",
   playerId: null,        // player picked for a new token
   newPlayer: null,       // { name, type, cls } while the form is open
@@ -376,15 +377,62 @@ function editorHtml() {
 
 function logHtml() {
   const q = ui.logFilter.trim().toLowerCase();
-  const done = finishedTokens(data)
-    .filter((t) => !q || (player(t.playerId)?.name || "").toLowerCase().includes(q))
-    .sort((a, b) => b.finishedAt.localeCompare(a.finishedAt));
+  const match = (playerId) => !q || (player(playerId)?.name || "").toLowerCase().includes(q);
+  const seg = (v, label) => `<button class="seg-btn" data-action="log-view" data-view="${v}" aria-pressed="${ui.logView === v}">${label}</button>`;
+  let list;
+  if (ui.logView === "players") {
+    const rows = playerRows().filter((r) => match(r.p.id));
+    list = rows.length ? `<div class="card all-players">${rows.map(playerRowHtml).join("")}</div>`
+      : `<div class="empty">${q ? "No match." : "Nobody has had a token yet."}</div>`;
+  } else {
+    const done = finishedTokens(data).filter((t) => match(t.playerId)).sort((a, b) => b.finishedAt.localeCompare(a.finishedAt));
+    list = done.length ? done.map((t) => tokenCardHtml(t, true)).join("") : `<div class="empty">${q ? "No match." : "No finished tokens yet."}</div>`;
+  }
   return `
-    <h2>Finished tokens</h2>
+    <div class="seg" role="group" aria-label="Log">${seg("players", "Players")}${seg("tokens", "Finished tokens")}</div>
     <input type="search" id="log-filter" placeholder="Filter by name" value="${esc(ui.logFilter)}" autocomplete="off">
     <p></p>
-    <div id="log-list">${done.length ? done.map((t) => tokenCardHtml(t, true)).join("") : `<div class="empty">${q ? "No match." : "No finished tokens yet."}</div>`}</div>
+    <div id="log-list">${list}</div>
   `;
+}
+
+// Everyone who has had a token, with where each open token stands. Active players first:
+// playing, then waiting for a prize, then the queue in order; players who are done last, latest first.
+function playerRows() {
+  const inQueue = queue(data);
+  const statusOf = (t) => {
+    const on = t.games.find((g) => g.startedAt && !g.result);
+    if (on) return { rank: 0, order: on.startedAt, html: `<span class="pill playing">Playing ${esc(game(on.gameId)?.name)} · ${minutesSince(on.startedAt)} min</span>` };
+    if (resultsComplete(t)) return { rank: 1, order: t.startedAt, html: `<span class="pill prize">Pick a prize</span>` };
+    const place = inQueue.indexOf(t) + 1;
+    return { rank: 2, order: String(place).padStart(6, "0"), html: `<span class="pill in-use">Waiting · ${ordinal(place)} in queue</span>` };
+  };
+  const rows = [];
+  for (const p of data.players) {
+    const tokens = data.tokens.filter((t) => t.playerId === p.id);
+    if (!tokens.length) continue;
+    const open = tokens.filter((t) => !t.finishedAt);
+    const done = tokens.filter((t) => t.finishedAt);
+    const statuses = open.map((t) => ({ t, ...statusOf(t) })).sort((a, b) => a.rank - b.rank || a.order.localeCompare(b.order));
+    const lastDone = done.map((t) => t.finishedAt).sort().at(-1) ?? "";
+    const wins = done.reduce((n, t) => n + t.games.filter((g) => g.result === "won").length, 0);
+    rows.push({ p, statuses, tokens: tokens.length, wins, lastDone, open: open[0], latest: tokens.at(-1) });
+  }
+  return rows.sort((a, b) => {
+    const ra = a.statuses[0]?.rank ?? 9, rb = b.statuses[0]?.rank ?? 9;
+    if (ra !== rb) return ra - rb;
+    if (ra === 9) return b.lastDone.localeCompare(a.lastDone);
+    return a.statuses[0].order.localeCompare(b.statuses[0].order);
+  });
+}
+
+function playerRowHtml(r) {
+  const t = r.statuses[0]?.t ?? r.latest;
+  const status = r.statuses.length ? r.statuses.map((s) => s.html).join("") : `<span class="pill">Done</span>`;
+  return `<div class="player-row">
+    <div class="who-col">${nameBtn(t)}<div class="small muted">${who(r.p)} · ${plural(r.tokens, "token")} · ${plural(r.wins, "win")}</div></div>
+    <div class="status-col">${status}</div>
+  </div>`;
 }
 
 // Stats -----------------------------------------------------------------------
@@ -659,6 +707,7 @@ const actions = {
     window.scrollTo(0, 0);
   },
   "change-close": () => { ui.changing = null; render(); },
+  "log-view": (el) => { ui.logView = el.dataset.view; render(); window.scrollTo(0, 0); },
   "settings-view": (el) => { ui.settingsView = el.dataset.view; render(); window.scrollTo(0, 0); },
   "change-pick": (el) => {
     const t = data.tokens.find((x) => x.id === ui.changing.tokenId);
@@ -875,7 +924,7 @@ document.addEventListener("change", async (e) => {
 
 // Keep the minutes on the In play cards current.
 setInterval(() => {
-  if ((ui.tab === "play" || ui.tab === "queue") && !ui.editing) render();
+  if (["play", "queue"].includes(ui.tab) && !ui.editing && !ui.changing) render();
 }, 30000);
 
 render();

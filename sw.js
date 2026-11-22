@@ -1,6 +1,6 @@
 // Keeps the app's files on the phone so it opens without internet.
 // Raise CACHE whenever a file below changes, or phones keep the old copy.
-const CACHE = "game-stall-v11";
+const CACHE = "game-stall-v12";
 const FILES = [
   "./", "index.html", "style.css", "app.js", "rules.js", "store.js", "manifest.json",
   "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png",
