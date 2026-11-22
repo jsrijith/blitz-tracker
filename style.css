@@ -283,3 +283,12 @@ label.field { display: block; margin: 12px 0 6px; font-weight: 600; }
 .player-row .status-col { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: 0 0 auto; }
 .player-row .status-col .pill { white-space: nowrap; }
 .kind-btn { min-height: 44px; padding: 6px 10px; font-size: 14px; flex: 0 0 auto; }
+
+/* Long games, games switched off, the token box check */
+.play-card.long { border-color: var(--danger); background: var(--lost-soft); }
+.long-text { color: var(--danger); font-weight: 700; }
+.long-note { color: var(--danger); font-weight: 600; font-size: 14px; margin: 2px 0 6px; }
+.pill.long { background: var(--lost-soft); border-color: var(--danger); color: var(--danger); font-weight: 600; }
+.kind-btn.off { color: var(--danger); border-color: var(--danger); }
+.count-ok { margin: 10px 0 0; color: var(--won); font-weight: 700; }
+.count-off { margin: 10px 0 0; color: var(--danger); font-weight: 600; }

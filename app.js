@@ -1,6 +1,7 @@
 import {
   PLAYER_TYPES, RESULTS, newId, defaultData, checkGamePick, checkFinish, wonAny, resultsComplete,
   openTokens, finishedTokens, computeStats, tokensToCsv, parseData, CLASS_KINDS, classLabel,
+  leftTokens, markLeft, bringBack, closeStall, isLongGame, LONG_GAME_MINUTES,
   DEFAULT_TITLE, givenCount, leftCount, parseStock, SLOT_MINUTES, MIN_PLAYS_FOR_RATE,
   gameState, queue, playingNow, canGive, startToken, startGame, endGame, waitMinutes, checkChange, changeGame,
 } from "./rules.js";
@@ -146,7 +147,7 @@ function startHtml() {
     <div class="choices">
       ${data.games.map((g, i) => {
         const on = ui.picked.includes(g.id);
-        const full = ui.picked.length >= 2 && !on;
+        const full = (ui.picked.length >= 2 || g.off) && !on;
         return `<button class="choice" data-action="toggle-game" data-id="${g.id}" aria-pressed="${on}" ${full ? "disabled" : ""}>
           <span class="num">${i + 1}</span>${esc(g.name)}${tableStatusHtml(g.id)}</button>`;
       }).join("")}
@@ -158,6 +159,7 @@ function startHtml() {
 }
 
 function tableStatusHtml(gameId) {
+  if (game(gameId)?.off) return `<span class="left busy">not available</span>`;
   const s = gameState(data, gameId);
   if (!s.playing) return `<span class="left">free${s.wanted.length ? ` · ${s.wanted.length} in queue` : ""}</span>`;
   return `<span class="left busy">${esc(player(s.playing.token.playerId)?.name)} playing${s.wanted.length ? ` · ${s.wanted.length} in queue` : ""}</span>`;
@@ -224,8 +226,9 @@ function newPlayerHtml() {
 function tokenCardHtml(t, showTime) {
   const p = player(t.playerId);
   const pill = (g) => `<span class="pill ${g.result || ""}">${esc(game(g.gameId)?.name)}${g.result ? ` · ${cap(g.result)}` : ""}</span>`;
-  const right = showTime ? time(t.finishedAt) : `${minutesSince(t.startedAt)} min`;
-  const prize = t.finishedAt && t.rewardId ? `<span class="pill prize">${esc(reward(t.rewardId)?.name)}</span>` : "";
+  const right = showTime ? time(t.finishedAt ?? t.leftAt) : `${minutesSince(t.startedAt)} min`;
+  const prize = t.finishedAt && t.rewardId ? `<span class="pill prize">${esc(reward(t.rewardId)?.name)}</span>`
+    : t.leftAt ? `<span class="pill">${t.leftReason === "closed" ? "Stall closed" : "Left"}</span>` : "";
   return `<button class="card token" data-action="edit-token" data-id="${t.id}">
     <div class="head"><span class="name">${esc(p?.name)}</span><span class="muted small">${right}</span></div>
     <div class="small muted">${who(p)}</div>
@@ -249,7 +252,8 @@ function queueHtml() {
         const change = `<button class="btn change" data-action="change-open" data-id="${t.id}" data-i="${i}">Change</button>`;
         if (canGive(data, t, i)) return `<div class="queue-game"><button class="btn primary give" data-action="give" data-id="${t.id}" data-i="${i}">Give ${name}</button>${change}</div>`;
         const on = gameState(data, g.gameId).playing;
-        return `<div class="queue-game"><span class="pill in-use">${name} · ${esc(player(on?.token.playerId)?.name)} playing</span>${change}</div>`;
+        const why = on ? `${esc(player(on.token.playerId)?.name)} playing` : game(g.gameId)?.off ? "not available" : "wait";
+        return `<div class="queue-game"><span class="pill in-use">${name} · ${why}</span>${change}</div>`;
       }).join("");
       return `<div class="card queue-card">
         <div class="head"><span class="place">${n + 1}</span>${nameBtn(t)}
@@ -298,9 +302,11 @@ function playHtml() {
     ${playing.map((t) => {
       const i = t.games.findIndex((g) => g.startedAt && !g.result);
       const g = t.games[i];
-      return `<div class="card play-card">
+      const long = isLongGame(g, Date.now());
+      return `<div class="card play-card ${long ? "long" : ""}">
         <div class="head"><span class="game-name">${esc(game(g.gameId)?.name)}</span>
-          <span class="muted small">${minutesSince(g.startedAt)} min</span></div>
+          <span class="small ${long ? "long-text" : "muted"}">${minutesSince(g.startedAt)} min</span></div>
+        ${long ? `<div class="long-note">Over ${LONG_GAME_MINUTES} min. Still playing? Check the table.</div>` : ""}
         <div>${nameBtn(t)} <span class="small muted">${who(player(t.playerId))}</span></div>
         <div class="choices">
           ${RESULTS.map((r) => `<button class="choice ${r}" data-action="end-game" data-id="${t.id}" data-i="${i}" data-r="${r}">${cap(r)}</button>`).join("")}
@@ -315,13 +321,14 @@ function playHtml() {
 function allGamesHtml() {
   const rows = data.games.map((g, n) => {
     const s = gameState(data, g.id);
+    const on = s.playing && s.playing.token.games[s.playing.index];
     const status = s.playing
-      ? `<span class="pill in-use">${nameBtn(s.playing.token)} · ${minutesSince(s.playing.token.games[s.playing.index].startedAt)} min</span>`
-      : `<span class="pill free">Free</span>`;
+      ? `<span class="pill ${isLongGame(on, Date.now()) ? "long" : "in-use"}">${nameBtn(s.playing.token)} · ${minutesSince(on.startedAt)} min</span>`
+      : g.off ? `<span class="pill">Not available</span>` : `<span class="pill free">Free</span>`;
     const want = s.wanted.length ? `<span class="small muted">${s.wanted.length} in queue</span>` : "";
     return `<div class="game-row"><span class="num">${n + 1}</span><span class="game">${esc(g.name)}</span>${want}${status}</div>`;
   });
-  const free = data.games.filter((g) => !gameState(data, g.id).playing).length;
+  const free = data.games.filter((g) => !g.off && !gameState(data, g.id).playing).length;
   return `<h2>All games <span class="muted small">(${free} of ${data.games.length} free)</span></h2>
     <div class="card all-games">${rows.join("")}</div>`;
 }
@@ -334,6 +341,7 @@ function tokenGamesHtml(t) {
   const rows = t.games.map((g) => {
     let status;
     if (g.result) status = `<span class="pill ${g.result}">${cap(g.result)}</span>`;
+    else if (t.leftAt) status = `<span class="muted">${g.startedAt ? "stopped part way" : "not played"}</span>`;
     else if (g.startedAt) status = `<span class="pill playing">Playing now · ${minutesSince(g.startedAt)} min</span>`;
     else if (t.finishedAt) status = `<span class="muted">not played</span>`;
     else if (place) status = `<span class="pill in-use">Waiting · ${ordinal(place)} in queue</span>`;
@@ -344,9 +352,24 @@ function tokenGamesHtml(t) {
   return `<div class="card token-games"><div class="small muted">Their games</div>${rows.join("")}</div>`;
 }
 
+function leftWhy(t) {
+  return t.leftReason === "closed" ? `Not finished when the stall closed (${time(t.leftAt)})` : `Left without finishing at ${time(t.leftAt)}`;
+}
+
 function editorHtml() {
   const t = data.tokens.find((x) => x.id === ui.editing.tokenId);
   const p = player(t.playerId);
+  if (t.leftAt) {
+    return `
+      <button class="btn link" data-action="close-editor">‹ Back</button>
+      <div class="card picked"><div><div class="name">${esc(p?.name)}</div><div class="small muted">${who(p)} · registered ${time(t.startedAt)}</div></div></div>
+      <div class="card">${esc(leftWhy(t))}.</div>
+      ${tokenGamesHtml(t)}
+      <button class="btn primary block" data-action="bring-back">Back in the queue</button>
+      <p class="small muted">They go back in their old place. A game they stopped part way is played again.</p>
+      <button class="btn danger block" data-action="delete-token">Delete this token</button>
+    `;
+  }
   const draft = { ...t, games: t.games.map((g, i) => ({ ...g, result: ui.editing.results[i] })) };
   const won = wonAny(draft);
   const complete = resultsComplete(draft);
@@ -373,6 +396,8 @@ function editorHtml() {
     <p></p>
     <button class="btn primary block" data-action="save-token" ${ready ? "" : "disabled"}>${finishing ? "Finish token" : "Save changes"}</button>
     <p></p>
+    ${finishing ? `<button class="btn block" data-action="mark-left">Left without finishing</button>
+    <p class="small muted">For a player who walked off. Their token is kept as a record, and a game they were on is freed.</p>` : ""}
     <button class="btn danger block" data-action="delete-token">${finishing ? "Cancel this token" : "Delete this token"}</button>
   `;
 }
@@ -389,11 +414,12 @@ function logHtml() {
     list = rows.length ? `<div class="card all-players">${rows.map(playerRowHtml).join("")}</div>`
       : `<div class="empty">${q ? "No match." : "Nobody has had a token yet."}</div>`;
   } else {
-    const done = finishedTokens(data).filter((t) => match(t.playerId)).sort((a, b) => b.finishedAt.localeCompare(a.finishedAt));
-    list = done.length ? done.map((t) => tokenCardHtml(t, true)).join("") : `<div class="empty">${q ? "No match." : "No finished tokens yet."}</div>`;
+    const endOf = (t) => t.finishedAt ?? t.leftAt;
+    const done = [...finishedTokens(data), ...leftTokens(data)].filter((t) => match(t.playerId)).sort((a, b) => endOf(b).localeCompare(endOf(a)));
+    list = done.length ? done.map((t) => tokenCardHtml(t, true)).join("") : `<div class="empty">${q ? "No match." : "No finished or left tokens yet."}</div>`;
   }
   return `
-    <div class="seg" role="group" aria-label="Log">${seg("players", "Players")}${seg("tokens", "Finished tokens")}</div>
+    <div class="seg" role="group" aria-label="Log">${seg("players", "Players")}${seg("tokens", "Tokens")}</div>
     <input type="search" id="log-filter" placeholder="Filter by name" value="${esc(ui.logFilter)}" autocomplete="off">
     <p></p>
     <div id="log-list">${list}</div>
@@ -415,10 +441,10 @@ function playerRows() {
   for (const p of data.players) {
     const tokens = data.tokens.filter((t) => t.playerId === p.id);
     if (!tokens.length) continue;
-    const open = tokens.filter((t) => !t.finishedAt);
+    const open = tokens.filter((t) => !t.finishedAt && !t.leftAt);
     const done = tokens.filter((t) => t.finishedAt);
     const statuses = open.map((t) => ({ t, ...statusOf(t) })).sort((a, b) => a.rank - b.rank || a.order.localeCompare(b.order));
-    const lastDone = done.map((t) => t.finishedAt).sort().at(-1) ?? "";
+    const lastDone = tokens.map((t) => t.finishedAt ?? t.leftAt ?? "").sort().at(-1) ?? "";
     const wins = done.reduce((n, t) => n + t.games.filter((g) => g.result === "won").length, 0);
     rows.push({ p, statuses, tokens: tokens.length, wins, lastDone, all: tokens, latest: tokens.at(-1) });
   }
@@ -432,12 +458,14 @@ function playerRows() {
 
 function playerRowHtml(r) {
   const t = r.statuses[0]?.t ?? r.latest;
-  const status = r.statuses.length ? r.statuses.map((s) => s.html).join("") : `<span class="pill">Done</span>`;
+  const lastLeft = !r.latest.finishedAt && r.latest.leftAt ? (r.latest.leftReason === "closed" ? "Stall closed" : "Left") : null;
+  const status = r.statuses.length ? r.statuses.map((s) => s.html).join("") : `<span class="pill">${lastLeft ?? "Done"}</span>`;
   // Every game on every token: played first, then the one being played, then the ones to come.
   const stage = (g) => (g.result ? 0 : g.startedAt ? 1 : 2);
   const tags = r.all.flatMap((tok) => [...tok.games].sort((a, b) => stage(a) - stage(b)).map((g) => {
     const name = esc(game(g.gameId)?.name);
     if (g.result) return `<span class="tag-game ${g.result}">${name} · ${cap(g.result)}</span>`;
+    if (tok.leftAt) return `<span class="tag-game">${name} · ${g.startedAt ? "Stopped" : "Not played"}</span>`;
     if (g.startedAt) return `<span class="tag-game playing">${name} · Playing</span>`;
     if (tok.finishedAt) return `<span class="tag-game">${name} · Not played</span>`;
     return `<span class="tag-game todo">${name} · To play</span>`;
@@ -500,14 +528,37 @@ function tableHtml(head, rows) {
     <tbody>${rows.map((r) => `<tr>${r.map((c, i) => `<td${i ? ' class="num"' : ""}>${c}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 
+// Tokens the app recorded against the tokens counted in the box.
+function countCheckHtml(c) {
+  const parts = [`${c.finished} finished`];
+  if (c.left) parts.push(`${c.left} left early`);
+  if (c.closed) parts.push(`${c.closed} not finished at closing`);
+  if (c.open) parts.push(`${c.open} still going`);
+  let verdict = "";
+  if (c.difference === 0) verdict = `<p class="count-ok">Matches the box.</p>`;
+  else if (c.difference > 0) verdict = `<p class="count-off">${plural(c.difference, "token")} more in the box than recorded. Some players may not have been registered.</p>`;
+  else if (c.difference < 0) verdict = `<p class="count-off">${plural(-c.difference, "token")} fewer in the box than recorded. Check for a player registered twice, or a token that went missing.</p>`;
+  return `<h2>Check the token box</h2>
+    <div class="card">
+      <p style="margin:0"><b>${plural(c.recorded, "token")}</b> recorded: ${parts.join(", ")}.</p>
+      <div class="edit-row" style="margin-top:10px">
+        <label class="tag" for="tokens-collected">Tokens in the box</label>
+        <input type="text" id="tokens-collected" data-edit="tokens-collected" value="${c.collected ?? ""}" inputmode="numeric" pattern="[0-9]*" placeholder="count them" style="flex:0 0 7em">
+      </div>
+      ${verdict}
+    </div>`;
+}
+
 function statsHtml() {
   const s = computeStats(data);
   if (!s.tokens) {
-    return `<div class="empty">Stats show up once the first token is finished.${s.inPlay ? `<br><br>${plural(s.inPlay, "token")} in play now.` : ""}</div>`;
+    return `${s.count.recorded ? countCheckHtml(s.count) : ""}
+      <div class="empty">Stats show up once the first token is finished.${s.inPlay ? `<br><br>${plural(s.inPlay, "token")} in play now.` : ""}</div>`;
   }
   const kpi = (value, label) => `<div class="kpi"><div class="value">${value}</div><div class="label">${label}</div></div>`;
   const o = s.outcomes;
   return `
+    ${countCheckHtml(s.count)}
     <h2>Highlights</h2>
     ${highlightsHtml(s)}
 
@@ -598,8 +649,18 @@ function setupHtml() {
 
     <h2>Games</h2>
     <div class="card">
+      <p class="small muted" style="margin:0 0 12px">Broken or missing pieces? Mark a game Off: it can't be picked or given out until it's back On.</p>
       ${data.games.map((g, i) => `<div class="edit-row"><span class="tag">${i + 1}</span>
-        <input type="text" data-edit="game" data-id="${g.id}" value="${esc(g.name)}" aria-label="Game ${i + 1} name"></div>`).join("")}
+        <input type="text" data-edit="game" data-id="${g.id}" value="${esc(g.name)}" aria-label="Game ${i + 1} name">
+        <button class="btn kind-btn ${g.off ? "off" : ""}" data-action="toggle-game-off" data-id="${g.id}" aria-pressed="${!g.off}" aria-label="${esc(g.name)} available">${g.off ? "Off" : "On"}</button></div>`).join("")}
+    </div>
+
+    <h2>Screen</h2>
+    <div class="card stack">
+      <button class="btn block ${data.keepAwake ? "primary" : ""}" data-action="toggle-keep-awake" aria-pressed="${data.keepAwake}">Keep the screen on: ${data.keepAwake ? "On" : "Off"}</button>
+      <p class="small muted" style="margin:0">${"wakeLock" in navigator
+        ? "While the app is open, the phone's screen won't switch off. Keep a charger at the stall."
+        : "This phone or browser can't keep the screen on by itself. Set the screen timeout to the longest in the phone's settings."}</p>
     </div>
 
     <h2>Prizes</h2>
@@ -628,6 +689,12 @@ function setupHtml() {
           <input type="text" data-edit="player-cls" data-id="${p.id}" value="${esc(p.cls)}" aria-label="${p.clsKind ? cap(p.clsKind) : "Class"}" style="flex:0 0 5.5em">` : `<span class="tag">${cap(p.type)}</span>`}
         ${tokenCount(p.id) ? "" : `<button class="btn" data-action="delete-player" data-id="${p.id}" aria-label="Remove ${esc(p.name)}">✕</button>`}
       </div>`).join("") : `<p class="muted small">No players yet.</p>`}
+    </div>
+
+    <h2>Close the stall</h2>
+    <div class="card stack">
+      <p class="small muted" style="margin:0">At the end of the day: everyone still in the queue or playing is marked as not finished, so Stats and the CSV include them.</p>
+      <button class="btn block" data-action="close-stall">Close the stall</button>
     </div>
 
     <h2>Start over</h2>
@@ -729,6 +796,51 @@ const actions = {
     const name = player(t.playerId)?.name;
     toast(finishing ? `${name} finished${rewardId ? ` · ${reward(rewardId).name}` : ""}.` : "Saved.", () => {
       Object.assign(t, before);
+      commit();
+    });
+  },
+  "mark-left": () => {
+    const t = data.tokens.find((x) => x.id === ui.editing.tokenId);
+    const index = data.tokens.indexOf(t);
+    const before = structuredClone(t);
+    markLeft(t, "left", nowIso());
+    ui.editing = null;
+    commit();
+    toast(`${player(t.playerId)?.name} left. Their token is kept in the Log.`, () => {
+      data.tokens[index] = before;
+      commit();
+    });
+  },
+  "bring-back": () => {
+    const t = data.tokens.find((x) => x.id === ui.editing.tokenId);
+    bringBack(t);
+    ui.editing = null;
+    ui.tab = "queue";
+    commit();
+    window.scrollTo(0, 0);
+    toast(`${player(t.playerId)?.name} is back in the queue.`);
+  },
+  "toggle-game-off": (el) => {
+    const g = game(el.dataset.id);
+    g.off = !g.off;
+    commit();
+    toast(g.off ? `${g.name} is off: it can't be picked or given out.` : `${g.name} is back on.`);
+  },
+  "toggle-keep-awake": () => {
+    data.keepAwake = !data.keepAwake;
+    commit();
+    if (data.keepAwake) keepScreenOn();
+    else releaseScreen();
+  },
+  "close-stall": () => {
+    const open = openTokens(data);
+    if (!open.length) return toast("Nothing is still going: every token is finished.");
+    if (!confirm(`Close the stall? ${plural(open.length, "token")} still in the queue or playing will be marked as not finished.`)) return;
+    const before = open.map((t) => [data.tokens.indexOf(t), structuredClone(t)]);
+    closeStall(data, nowIso());
+    commit();
+    toast(`Stall closed. ${plural(open.length, "token")} marked as not finished.`, () => {
+      for (const [i, t] of before) data.tokens[i] = t;
       commit();
     });
   },
@@ -921,6 +1033,17 @@ document.addEventListener("change", async (e) => {
     renderBanner();
     return;
   }
+  if (kind === "tokens-collected") {
+    const n = parseStock(el.value);
+    if (n === undefined) {
+      el.value = data.tokensCollected ?? "";
+      toast("Type a whole number, like 120.");
+      return;
+    }
+    data.tokensCollected = n;
+    commit();
+    return;
+  }
   if (kind === "reward-stock") {
     const r = reward(el.dataset.id);
     const stock = parseStock(el.value);
@@ -958,7 +1081,27 @@ setInterval(() => {
   if (["play", "queue"].includes(ui.tab) && !ui.editing && !ui.changing) render();
 }, 30000);
 
+// Keep the screen on while the app is open (Setup → Screen). The browser lets go of this whenever
+// the app is hidden, so it's asked for again each time the app comes back.
+let screenLock = null;
+async function keepScreenOn() {
+  if (!data.keepAwake || screenLock || document.visibilityState !== "visible" || !("wakeLock" in navigator)) return;
+  try {
+    screenLock = await navigator.wakeLock.request("screen");
+    screenLock.addEventListener("release", () => { screenLock = null; });
+  } catch {
+    // Refused (battery saver, or no tap yet): the next tap tries again.
+  }
+}
+function releaseScreen() {
+  screenLock?.release().catch(() => {});
+  screenLock = null;
+}
+document.addEventListener("visibilitychange", keepScreenOn);
+document.addEventListener("click", keepScreenOn);
+
 render();
+keepScreenOn();
 askPersistent();
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   navigator.serviceWorker.register("sw.js").catch((err) => console.warn("Offline mode unavailable", err));

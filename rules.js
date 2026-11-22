@@ -5,7 +5,9 @@ export const DATA_VERSION = 1;
 export const GAMES_PER_TOKEN = 2;
 export const PLAYER_TYPES = ["student", "teacher"];
 export const RESULTS = ["won", "lost"];
-export const CLASS_KINDS = ["grade", "year"]; // a student's class is a grade or a year, like Grade 5B
+export const CLASS_KINDS = ["grade", "year"];
+export const LONG_GAME_MINUTES = 20; // a game on longer than this may have been forgotten
+export const LEFT_REASONS = ["left", "closed"]; // the player walked off, or the stall closed first // a student's class is a grade or a year, like Grade 5B
 
 // "Grade 5B", "Year 5B", or just "5B" for a student saved before grade and year existed.
 export function classLabel(p) {
@@ -41,6 +43,8 @@ export function defaultData() {
     players: [],
     tokens: [],
     lastBackupTokens: 0,
+    keepAwake: true,       // keep the phone's screen on while the app is open
+    tokensCollected: null, // tokens counted in the box after the stall, to check against
   };
 }
 
@@ -51,7 +55,9 @@ export function checkGamePick(data, gameIds) {
   if (gameIds.length !== GAMES_PER_TOKEN) return `Pick exactly ${GAMES_PER_TOKEN} games.`;
   if (gameIds[0] === gameIds[1]) return "Pick two different games.";
   for (const id of gameIds) {
-    if (!data.games.some((g) => g.id === id)) return "Unknown game.";
+    const g = data.games.find((x) => x.id === id);
+    if (!g) return "Unknown game.";
+    if (g.off) return `${g.name} isn't available right now.`;
   }
   return null;
 }
@@ -76,8 +82,46 @@ export function checkFinish(data, token, rewardId) {
   return null;
 }
 
+// Tokens still going: not finished, and the player hasn't left.
 export function openTokens(data) {
-  return data.tokens.filter((t) => !t.finishedAt);
+  return data.tokens.filter((t) => !t.finishedAt && !t.leftAt);
+}
+
+// Tokens whose player left before finishing, or that were still going when the stall closed.
+export function leftTokens(data) {
+  return data.tokens.filter((t) => t.leftAt);
+}
+
+// The player walked off (reason "left"), or the stall closed (reason "closed").
+// A game they were on is stopped, so it's free for the next player.
+export function markLeft(token, reason, now) {
+  token.leftAt = now;
+  token.leftReason = reason;
+  for (const g of token.games) if (g.startedAt && !g.result) g.endedAt = now;
+}
+
+// Undoes markLeft: back in the queue, in their old place. A game stopped part way is played again.
+export function bringBack(token) {
+  delete token.leftAt;
+  delete token.leftReason;
+  for (const g of token.games) {
+    if (g.startedAt && !g.result) {
+      g.startedAt = null;
+      g.endedAt = null;
+    }
+  }
+}
+
+// End of the day: every token still going is marked as not finished. Returns those tokens.
+export function closeStall(data, now) {
+  const open = openTokens(data);
+  for (const t of open) markLeft(t, "closed", now);
+  return open;
+}
+
+// True when a game has been on longer than LONG_GAME_MINUTES, so the stall should check on it.
+export function isLongGame(g, now) {
+  return g.startedAt != null && g.result == null && (now - Date.parse(g.startedAt)) / 60000 > LONG_GAME_MINUTES;
 }
 
 export function finishedTokens(data) {
@@ -128,7 +172,8 @@ export function playingNow(data) {
 // Can this token be given this game now?
 export function canGive(data, token, index) {
   const g = token.games[index];
-  return !token.finishedAt && isWaiting(g) && !isBusy(token) && !gameState(data, g.gameId).playing;
+  return !token.finishedAt && !token.leftAt && isWaiting(g) && !isBusy(token)
+    && !data.games.find((x) => x.id === g.gameId)?.off && !gameState(data, g.gameId).playing;
 }
 
 // A new token: into the queue. Returns the token (already added to data) and its place in the queue.
@@ -145,7 +190,9 @@ export function startToken(data, playerId, gameIds, now) {
 export function checkChange(data, token, index, newGameId) {
   const g = token.games[index];
   if (!g || !isWaiting(g)) return "Only a game they haven't started can be changed.";
-  if (!data.games.some((x) => x.id === newGameId)) return "Unknown game.";
+  const target = data.games.find((x) => x.id === newGameId);
+  if (!target) return "Unknown game.";
+  if (target.off) return `${target.name} isn't available right now.`;
   if (token.games.some((x) => x.gameId === newGameId)) return "They already have that game.";
   return null;
 }
@@ -246,7 +293,8 @@ function peakInPlay(tokens, now) {
   const events = [];
   for (const t of tokens) {
     const start = Date.parse(t.startedAt);
-    const end = t.finishedAt ? Date.parse(t.finishedAt) : now.getTime();
+    const endAt = t.finishedAt ?? t.leftAt;
+    const end = endAt ? Date.parse(endAt) : now.getTime();
     events.push([start, 1], [Math.max(start, end), -1]);
   }
   events.sort((a, b) => a[0] - b[0] || a[1] - b[1]); // a finish at the same moment goes first
@@ -376,7 +424,20 @@ export function computeStats(data, now = new Date()) {
     .slice(0, 5);
   const returning = playing.filter((p) => tokensOf.get(p.id).length >= 2).length;
 
+  // Checking the count -------------------------------------------------------
+  const left = leftTokens(data);
+  const count = {
+    recorded: data.tokens.length,
+    finished: done.length,
+    left: left.filter((t) => t.leftReason === "left").length,
+    closed: left.filter((t) => t.leftReason === "closed").length,
+    open: openTokens(data).length,
+    collected: data.tokensCollected ?? null,
+  };
+  count.difference = count.collected == null ? null : count.collected - count.recorded;
+
   return {
+    count,
     tokens: done.length,
     inPlay: openTokens(data).length,
     plays: done.length * GAMES_PER_TOKEN,
@@ -431,17 +492,20 @@ export function tokensToCsv(data) {
   const header = [
     "token_id", "player", "player_type", "class", "class_type", "registered_at",
     "game_1", "result_1", "game_2", "result_2",
-    "won_any", "prize", "everyone_got", "started_at", "finished_at", "minutes", "waited_minutes",
+    "won_any", "prize", "everyone_got", "started_at", "finished_at", "minutes", "waited_minutes", "status",
   ];
-  const rows = finishedTokens(data).map((t) => {
+  const status = (t) => (t.finishedAt ? "finished" : t.leftReason === "closed" ? "stall closed" : "left");
+  const rows = data.tokens.filter((t) => t.finishedAt || t.leftAt).map((t) => {
     const p = playerById.get(t.playerId) || {};
-    const minutes = (Date.parse(t.finishedAt) - Date.parse(t.startedAt)) / 60000;
+    const end = t.finishedAt ?? t.leftAt;
+    const minutes = (Date.parse(end) - Date.parse(t.startedAt)) / 60000;
     return [
       t.id, p.name, p.type, p.cls, p.cls ? p.clsKind ?? "" : "", p.registeredAt,
       gameName(t.games[0].gameId), t.games[0].result, gameName(t.games[1].gameId), t.games[1].result,
-      wonAny(t) ? "yes" : "no", rewardName(t.rewardId), everyone, t.startedAt, t.finishedAt,
+      wonAny(t) ? "yes" : "no", rewardName(t.rewardId), t.finishedAt ? everyone : "", t.startedAt, end,
       Number.isFinite(minutes) ? minutes.toFixed(1) : "",
       waitMinutes(t)?.toFixed(1) ?? "",
+      status(t),
     ];
   });
   return [header, ...rows].map((row) => row.map(csvField).join(",")).join("\r\n") + "\r\n";
@@ -468,6 +532,7 @@ export function parseData(text) {
     if (!Array.isArray(d[key])) fail(`${key} is missing`);
   }
   if (!d.games.every((g) => isStr(g.id) && isStr(g.name))) fail("a game has no name");
+  if (!d.games.every((g) => g.off === undefined || typeof g.off === "boolean")) fail("a game's availability is broken");
   if (!d.rewards.every((r) => isStr(r.id) && isStr(r.name) && typeof r.everyone === "boolean")) fail("a prize is broken");
   for (const r of d.rewards) {
     if (r.stock === undefined) r.stock = null; // saved before quantities existed
@@ -499,7 +564,12 @@ export function parseData(text) {
     }
     if (t.rewardId != null && !rewardIds.has(t.rewardId)) fail("a token names an unknown prize");
     if (t.finishedAt != null && !isTime(t.finishedAt)) fail("a token has a bad finish time");
+    if (t.leftAt != null && (!isTime(t.leftAt) || !LEFT_REASONS.includes(t.leftReason))) fail("a token has a bad leaving time");
   }
   if (typeof d.lastBackupTokens !== "number") d.lastBackupTokens = 0;
+  if (d.keepAwake === undefined) d.keepAwake = true; // saved before the setting existed
+  if (typeof d.keepAwake !== "boolean") fail("the screen setting is broken");
+  if (d.tokensCollected === undefined) d.tokensCollected = null;
+  if (d.tokensCollected !== null && !(Number.isInteger(d.tokensCollected) && d.tokensCollected >= 0)) fail("the token count is broken");
   return d;
 }

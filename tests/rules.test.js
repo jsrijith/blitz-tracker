@@ -111,7 +111,7 @@ test("CSV has a header and one row per finished token", () => {
   const ravi = lines.find((l) => l.startsWith("t3,"));
   assert.ok(ravi.includes('"Mr ""Ravi"", Kumar",teacher'));
   assert.ok(ravi.includes("Game 3,lost,Game 1,won,yes,Keychain,Sticker"));
-  assert.ok(ravi.endsWith(",15.0,"), "no table times, so no wait");
+  assert.ok(ravi.endsWith(",15.0,,finished"), "no table times, so no wait");
 });
 
 test("a backup round-trips", () => {

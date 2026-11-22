@@ -18,7 +18,9 @@ works without internet.
 1. **Settings → Setup**: before the stall opens, set the stall's name, type in the 8 game names, and enter
    how many of each prize you're starting with. The app then counts down what's left, shows it on
    the prize buttons, and warns at the top when something gets down to 3. Leave a quantity blank to
-   not count that prize. If you restock, add the new ones to the starting number.
+   not count that prize. If you restock, add the new ones to the starting number. A game with
+   broken or missing pieces can be switched **Off** so it isn't picked or given out. **Keep the
+   screen on** (on by default) stops the phone's screen switching off while the app is open.
 2. **New token**: when someone hands over a token, type their name. Tap them if they've played
    before, or add them as a new player (student or teacher; for a student, tap Grade or Year and type it,
    like 1A, 5B or 6D). Pick their 2
@@ -30,18 +32,22 @@ works without internet.
    Rather not wait? Tap **Change** next to a game to swap it for another one. They keep their
    place in the queue. Only a game they haven't started can be changed.
 4. **Playing**: who is on which game. When a player says they're done, tap **Won** or **Lost**.
+   A game on for over 20 minutes turns red: check the table, in case a result was forgotten.
    **All games** at the bottom shows every game: free, or who is on it, and how many in the queue
    want it.
    After their first game they go back to the queue, in the same place, for their other game.
    After their second, pick their prize and tap **Finish token**. Made a mistake? Tap **Undo** on
    the message at the bottom. Tap a name to see both their games (playing now, waiting with
    their place in the queue, or won/lost, and what they picked at registration if they changed),
-   or to fix or cancel the token.
+   or to fix or cancel the token. A player who walked off: tap their name, then **Left without
+   finishing**. Their token stays in the Log, and **Back in the queue** undoes it.
 5. **Log**: **Players** lists everyone who has had a token, with where they are now (playing,
    waiting and their place in the queue, picking a prize, or done), their tokens and wins, and
    each of their games: won, lost, playing, or still to play.
-   **Finished tokens** lists every finished token: tap one to fix or delete it.
-6. **Settings → Stats**, once the stall is over: highlights first (busiest half hour, most players at once, most and least popular
+   **Tokens** lists every finished token, and those whose player left: tap one to fix or delete it.
+6. **Settings → Setup → Close the stall** at the end of the day marks everyone still in the queue
+   or playing as not finished. Then **Settings → Stats**: count the tokens in the box and type the
+   number under **Check the token box** to see if it matches what was recorded. After that: highlights first (busiest half hour, most players at once, most and least popular
    game, hardest and easiest game, favourite pair and prize, most active class, top winner), then
    how players did (won both, won one, lost both), busy times, plays and win rate per game,
    students against teachers, classes, prizes given and left, and the players with the most wins
