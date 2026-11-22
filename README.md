@@ -20,7 +20,8 @@ works without internet.
    the prize buttons, and warns at the top when something gets down to 3. Leave a quantity blank to
    not count that prize. If you restock, add the new ones to the starting number.
 2. **New token**: when someone hands over a token, type their name. Tap them if they've played
-   before, or add them as a new player (student or teacher, plus class for students). Pick their 2
+   before, or add them as a new player (student or teacher; for a student, tap Grade or Year and type it,
+   like 1A, 5B or 6D). Pick their 2
    games and tap **Start token**. Each game button shows who is playing it. A game in use can still
    be picked: every token goes into the queue.
 3. **Queue**: everyone waiting, in the order they registered. Each player's games show as

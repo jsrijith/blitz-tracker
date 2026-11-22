@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   defaultData, checkGamePick, checkFinish, wonAny, resultsComplete, computeStats,
-  newId, csvField, tokensToCsv, parseData, pairKey, givenCount, leftCount, parseStock, DEFAULT_TITLE,
+  newId, classLabel, csvField, tokensToCsv, parseData, pairKey, givenCount, leftCount, parseStock, DEFAULT_TITLE,
 } from "../rules.js";
 
 function sample() {
@@ -269,4 +269,26 @@ test("ids still work where randomUUID is missing (plain http at an IP address)",
   } finally {
     Object.defineProperty(globalThis.crypto, "randomUUID", { value: saved, configurable: true });
   }
+});
+
+test("a student's class is a grade or a year", () => {
+  assert.equal(classLabel({ cls: "5B", clsKind: "grade" }), "Grade 5B");
+  assert.equal(classLabel({ cls: "5B", clsKind: "year" }), "Year 5B");
+  assert.equal(classLabel({ cls: "5B" }), "5B", "saved before grade and year existed");
+  assert.equal(classLabel({ cls: "", clsKind: "grade" }), "");
+
+  const d = sample();
+  d.players[0].clsKind = "grade"; // Asha, 5B
+  d.players[2].clsKind = "year";  // Ben, 3A
+  const s = computeStats(d);
+  assert.deepEqual(s.classStats.map((c) => c.cls).sort(), ["Grade 5B", "Year 3A"]);
+  const rows = tokensToCsv(d).trim().split("\r\n");
+  assert.match(rows[0], /,class,class_type,registered_at,/);
+  assert.ok(rows.find((l) => l.startsWith("t4,")).includes(",student,3A,year,"));
+  assert.ok(rows.find((l) => l.startsWith("t3,")).includes(",teacher,,,"));
+
+  const bad = JSON.parse(JSON.stringify(d));
+  bad.players[0].clsKind = "form";
+  assert.throws(() => parseData(JSON.stringify(bad)), /grade or year/);
+  assert.equal(parseData(JSON.stringify(d)).players[2].clsKind, "year");
 });

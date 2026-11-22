@@ -1,6 +1,6 @@
 import {
   PLAYER_TYPES, RESULTS, newId, defaultData, checkGamePick, checkFinish, wonAny, resultsComplete,
-  openTokens, finishedTokens, computeStats, tokensToCsv, parseData,
+  openTokens, finishedTokens, computeStats, tokensToCsv, parseData, CLASS_KINDS, classLabel,
   DEFAULT_TITLE, givenCount, leftCount, parseStock, SLOT_MINUTES, MIN_PLAYS_FOR_RATE,
   gameState, queue, playingNow, canGive, startToken, startGame, endGame, waitMinutes, checkChange, changeGame,
 } from "./rules.js";
@@ -18,7 +18,7 @@ const ui = {
   logView: "players",    // "players" or "tokens", inside the Log tab
   search: "",
   playerId: null,        // player picked for a new token
-  newPlayer: null,       // { name, type, cls } while the form is open
+  newPlayer: null,       // { name, type, clsKind, cls } while the form is open
   picked: [],            // game ids picked for a new token
   editing: null,         // { tokenId, results: [r, r], rewardId: id | null | undefined }
   changing: null,        // { tokenId, index } while a queued player picks a different game
@@ -58,7 +58,7 @@ const minutesSince = (iso) => Math.max(0, Math.round((Date.now() - Date.parse(is
 
 function who(p) {
   if (!p) return "Unknown";
-  return p.type === "student" && p.cls ? `${cap(p.type)} · ${esc(p.cls)}` : cap(p.type);
+  return p.type === "student" && p.cls ? `${cap(p.type)} · ${esc(classLabel(p))}` : cap(p.type);
 }
 
 function commit() {
@@ -205,8 +205,12 @@ function newPlayerHtml() {
       ${PLAYER_TYPES.map((t) => `<button class="choice" data-action="np-type" data-type="${t}" aria-pressed="${np.type === t}">${cap(t)}</button>`).join("")}
     </div>
     ${np.type === "student" ? `
-      <label class="field" for="np-cls">Class</label>
-      <input type="text" id="np-cls" value="${esc(np.cls)}" placeholder="e.g. 5B" autocomplete="off" autocapitalize="characters">` : ""}
+      <label class="field">Grade or year?</label>
+      <div class="choices">
+        ${CLASS_KINDS.map((k) => `<button class="choice" data-action="np-cls-kind" data-kind="${k}" aria-pressed="${np.clsKind === k}">${cap(k)}</button>`).join("")}
+      </div>
+      <label class="field" for="np-cls">${np.clsKind ? cap(np.clsKind) : "Class"}</label>
+      <input type="text" id="np-cls" value="${esc(np.cls)}" placeholder="e.g. 1A, 5B, 6D" autocomplete="off" autocapitalize="characters">` : ""}
     <p></p>
     <div class="row">
       <button class="btn" data-action="np-cancel">Cancel</button>
@@ -620,7 +624,8 @@ function setupHtml() {
     <div class="card">
       ${data.players.length ? [...data.players].sort((a, b) => a.name.localeCompare(b.name)).map((p) => `<div class="edit-row">
         <input type="text" data-edit="player-name" data-id="${p.id}" value="${esc(p.name)}" aria-label="Name">
-        ${p.type === "student" ? `<input type="text" data-edit="player-cls" data-id="${p.id}" value="${esc(p.cls)}" aria-label="Class" style="flex:0 0 5.5em">` : `<span class="tag">${cap(p.type)}</span>`}
+        ${p.type === "student" ? `<button class="btn kind-btn" data-action="toggle-cls-kind" data-id="${p.id}" aria-label="Grade or year">${p.clsKind ? cap(p.clsKind) : "Class"}</button>
+          <input type="text" data-edit="player-cls" data-id="${p.id}" value="${esc(p.cls)}" aria-label="${p.clsKind ? cap(p.clsKind) : "Class"}" style="flex:0 0 5.5em">` : `<span class="tag">${cap(p.type)}</span>`}
         ${tokenCount(p.id) ? "" : `<button class="btn" data-action="delete-player" data-id="${p.id}" aria-label="Remove ${esc(p.name)}">✕</button>`}
       </div>`).join("") : `<p class="muted small">No players yet.</p>`}
     </div>
@@ -646,7 +651,19 @@ function resetStart() {
 const actions = {
   "pick-player": (el) => { ui.playerId = el.dataset.id; ui.picked = []; render(); },
   "clear-player": () => { ui.playerId = null; ui.picked = []; render(); },
-  "new-player": () => { ui.newPlayer = { name: ui.search.trim(), type: null, cls: "" }; render(); $("#np-name")?.focus(); },
+  "new-player": () => {
+    // Start with whatever the last student registered used, since most of a day is one or the other.
+    const last = [...data.players].reverse().find((p) => p.type === "student" && p.clsKind);
+    ui.newPlayer = { name: ui.search.trim(), type: null, clsKind: last?.clsKind ?? "grade", cls: "" };
+    render();
+    $("#np-name")?.focus();
+  },
+  "np-cls-kind": (el) => { readNewPlayer(); ui.newPlayer.clsKind = el.dataset.kind; render(); $("#np-cls")?.focus(); },
+  "toggle-cls-kind": (el) => {
+    const p = player(el.dataset.id);
+    p.clsKind = p.clsKind === "grade" ? "year" : "grade";
+    commit();
+  },
   "np-type": (el) => { readNewPlayer(); ui.newPlayer.type = el.dataset.type; render(); if (el.dataset.type === "student") $("#np-cls")?.focus(); },
   "np-cancel": () => { ui.newPlayer = null; render(); },
   "np-save": () => {
@@ -655,9 +672,11 @@ const actions = {
     const name = np.name.trim().replace(/\s+/g, " ");
     if (!name) return toast("Type their name first.");
     if (!np.type) return toast("Choose who they are.");
-    const same = data.players.find((p) => p.name.toLowerCase() === name.toLowerCase() && (p.cls || "") === (np.cls || "").trim());
+    const cls = np.type === "student" ? np.cls.trim().toUpperCase() : "";
+    const clsKind = cls ? np.clsKind : null;
+    const same = data.players.find((p) => p.name.toLowerCase() === name.toLowerCase() && (p.cls || "") === cls && (p.clsKind ?? null) === clsKind);
     if (same && !confirm(`There is already a ${same.name}. Add another player with the same name?`)) return;
-    const p = { id: newId(), name, type: np.type, cls: np.type === "student" ? np.cls.trim().toUpperCase() : "", registeredAt: nowIso() };
+    const p = { id: newId(), name, type: np.type, cls, clsKind, registeredAt: nowIso() };
     data.players.push(p);
     ui.newPlayer = null;
     ui.playerId = p.id;

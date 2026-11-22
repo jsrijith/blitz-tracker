@@ -282,3 +282,4 @@ label.field { display: block; margin: 12px 0 6px; font-weight: 600; }
 .player-row .who-col { min-width: 0; }
 .player-row .status-col { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: 0 0 auto; }
 .player-row .status-col .pill { white-space: nowrap; }
+.kind-btn { min-height: 44px; padding: 6px 10px; font-size: 14px; flex: 0 0 auto; }

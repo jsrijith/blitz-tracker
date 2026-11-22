@@ -5,6 +5,13 @@ export const DATA_VERSION = 1;
 export const GAMES_PER_TOKEN = 2;
 export const PLAYER_TYPES = ["student", "teacher"];
 export const RESULTS = ["won", "lost"];
+export const CLASS_KINDS = ["grade", "year"]; // a student's class is a grade or a year, like Grade 5B
+
+// "Grade 5B", "Year 5B", or just "5B" for a student saved before grade and year existed.
+export function classLabel(p) {
+  if (!p?.cls) return "";
+  return p.clsKind ? `${p.clsKind.charAt(0).toUpperCase()}${p.clsKind.slice(1)} ${p.cls}` : p.cls;
+}
 export const DEFAULT_TITLE = "Game Stall";
 
 // randomUUID() only exists on secure pages (https or localhost). Testing over plain http at an IP
@@ -344,7 +351,7 @@ export function computeStats(data, now = new Date()) {
   const playersWon = playing.filter((p) => winsOf(p) > 0).length;
 
   const byType = sortedEntries(countBy(playing, (p) => p.type)).map(([type, count]) => ({ type, count }));
-  const byClass = sortedEntries(countBy(playing.filter((p) => p.cls), (p) => p.cls)).map(([cls, count]) => ({ cls, count }));
+  const byClass = sortedEntries(countBy(playing.filter((p) => p.cls), classLabel)).map(([cls, count]) => ({ cls, count }));
 
   // Results for a group of players: students, teachers, or one class.
   const group = (members) => {
@@ -356,7 +363,7 @@ export function computeStats(data, now = new Date()) {
   };
   const typeStats = byType.map(({ type }) => ({ type, ...group(playing.filter((p) => p.type === type)) }));
   const classStats = byClass
-    .map(({ cls }) => ({ cls, ...group(playing.filter((p) => p.cls === cls)) }))
+    .map(({ cls }) => ({ cls, ...group(playing.filter((p) => p.cls && classLabel(p) === cls)) }))
     .sort((a, b) => b.tokens - a.tokens || a.cls.localeCompare(b.cls));
 
   const topPlayers = sortedEntries(countBy(done, (t) => t.playerId))
@@ -422,7 +429,7 @@ export function tokensToCsv(data) {
   const everyone = data.rewards.filter((r) => r.everyone).map((r) => r.name).join(" + ");
 
   const header = [
-    "token_id", "player", "player_type", "class", "registered_at",
+    "token_id", "player", "player_type", "class", "class_type", "registered_at",
     "game_1", "result_1", "game_2", "result_2",
     "won_any", "prize", "everyone_got", "started_at", "finished_at", "minutes", "waited_minutes",
   ];
@@ -430,7 +437,7 @@ export function tokensToCsv(data) {
     const p = playerById.get(t.playerId) || {};
     const minutes = (Date.parse(t.finishedAt) - Date.parse(t.startedAt)) / 60000;
     return [
-      t.id, p.name, p.type, p.cls, p.registeredAt,
+      t.id, p.name, p.type, p.cls, p.cls ? p.clsKind ?? "" : "", p.registeredAt,
       gameName(t.games[0].gameId), t.games[0].result, gameName(t.games[1].gameId), t.games[1].result,
       wonAny(t) ? "yes" : "no", rewardName(t.rewardId), everyone, t.startedAt, t.finishedAt,
       Number.isFinite(minutes) ? minutes.toFixed(1) : "",
@@ -473,6 +480,7 @@ export function parseData(text) {
   for (const p of d.players) {
     if (!isStr(p.id) || !isStr(p.name) || !PLAYER_TYPES.includes(p.type) || !isTime(p.registeredAt)) fail("a player is broken");
     if (p.cls != null && typeof p.cls !== "string") fail("a player's class is broken");
+    if (p.clsKind != null && !CLASS_KINDS.includes(p.clsKind)) fail("a player's grade or year is broken");
     playerIds.add(p.id);
   }
   const gameIds = new Set(d.games.map((g) => g.id));
