@@ -16,7 +16,7 @@ function sample() {
   );
   const tok = (id, playerId, a, ra, b, rb, rewardId, start, end) => ({
     id, playerId, startedAt: start, finishedAt: end, rewardId,
-    games: [{ gameId: a, result: ra }, { gameId: b, result: rb }],
+    games: [a, b].map((gameId, i) => ({ gameId, result: [ra, rb][i], startedAt: null, endedAt: null, lineAt: null })),
   });
   d.tokens.push(
     tok("t1", "p1", "g1", "won", "g2", "lost", "pen", "2026-11-28T09:00:00.000Z", "2026-11-28T09:10:00.000Z"),
@@ -111,7 +111,7 @@ test("CSV has a header and one row per finished token", () => {
   const ravi = lines.find((l) => l.startsWith("t3,"));
   assert.ok(ravi.includes('"Mr ""Ravi"", Kumar",teacher'));
   assert.ok(ravi.includes("Game 3,lost,Game 1,won,yes,Keychain,Sticker"));
-  assert.ok(ravi.endsWith(",15.0"));
+  assert.ok(ravi.endsWith(",15.0,"), "no table times, so no wait");
 });
 
 test("a backup round-trips", () => {

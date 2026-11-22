@@ -21,10 +21,16 @@ works without internet.
    not count that prize. If you restock, add the new ones to the starting number.
 2. **New token**: when someone hands over a token, type their name. Tap them if they've played
    before, or add them as a new player (student or teacher, plus class for
-   students). Pick their 2 games and tap **Start token**.
-3. **In play**: everyone who is still playing. When someone finishes, tap their card and set
-   Won or Lost for each game. If they won one, tap the prize they chose. Then tap
-   **Finish token**. Made a mistake? Tap **Undo** on the message at the bottom.
+   students). Pick their 2 games and tap **Start token**. Each game button shows who is playing
+   it and how many are waiting. A game in use can still be picked: the message at the bottom
+   says which game to play now and where they are in line for the other.
+3. **In play**: one card per game in use, with who is on it and who is waiting. Tap **Won** or
+   **Lost** as soon as a game ends, which frees it. When a waiting player can go, a yellow box at
+   the top says "Chess is free: call Bob", and the phone buzzes and beeps. Tap **Started** when
+   they sit down, or **Not here** to move them to the back of that line. Someone playing their
+   other game keeps their place but isn't called until they're done. When both of a player's
+   games are done, pick their prize and tap **Finish token**. Made a mistake? Tap **Undo** on the
+   message at the bottom. Tap a name to change or cancel a token.
 4. **Log**: every finished token. Tap one to fix or delete it.
 5. **Stats**: highlights first (busiest half hour, most players at once, most and least popular
    game, hardest and easiest game, favourite pair and prize, most active class, top winner), then

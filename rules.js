@@ -69,6 +69,101 @@ export function finishedTokens(data) {
   return data.tokens.filter((t) => t.finishedAt);
 }
 
+// ---- Tables and the waiting line -------------------------------------------
+// There is one copy of each game. Each game in a token is in one of three states:
+//   waiting: no startedAt and no result; lineAt is its place in that game's line
+//   playing: startedAt set, no result yet
+//   done:    result set (endedAt is when)
+// A player plays one game at a time, so a player who is playing is skipped in other lines but
+// keeps their place.
+
+const isPlaying = (g) => g.startedAt != null && g.result == null;
+const isWaiting = (g) => g.startedAt == null && g.result == null;
+const lineTime = (token, g) => g.lineAt ?? token.startedAt;
+
+export function isBusy(token) {
+  return token.games.some(isPlaying);
+}
+
+// Who is on a game, and who is waiting for it, first in line first.
+export function gameState(data, gameId) {
+  let playing = null;
+  const line = [];
+  for (const token of openTokens(data)) {
+    token.games.forEach((g, index) => {
+      if (g.gameId !== gameId) return;
+      if (isPlaying(g) && !playing) playing = { token, index };
+      else if (isWaiting(g)) line.push({ token, index });
+    });
+  }
+  line.sort((a, b) => lineTime(a.token, a.token.games[a.index]).localeCompare(lineTime(b.token, b.token.games[b.index]))
+    || a.token.id.localeCompare(b.token.id));
+  return { playing, line };
+}
+
+// The player who should go on a free game now: the first in line who isn't playing something else.
+function firstFree(state) {
+  return state.playing ? null : state.line.find((x) => !isBusy(x.token)) ?? null;
+}
+
+// Every free game with someone ready to play it.
+export function nextUp(data) {
+  return data.games
+    .map((g) => ({ gameId: g.id, next: firstFree(gameState(data, g.id)) }))
+    .filter((x) => x.next)
+    .map((x) => ({ gameId: x.gameId, token: x.next.token, index: x.next.index }));
+}
+
+// A new token. The player is at the stall, so the first of their games that nobody else can take
+// right now starts straight away; the other waits in its line.
+// Returns the token (already added to data), which game started (index or null), and the place in
+// line (1 = next) for each game, or null for the one that started.
+export function startToken(data, playerId, gameIds, now) {
+  const token = {
+    id: newId(), playerId, startedAt: now, rewardId: null, finishedAt: null,
+    games: gameIds.map((gameId) => ({ gameId, result: null, startedAt: null, endedAt: null, lineAt: now })),
+  };
+  const canStart = gameIds.map((id) => {
+    const s = gameState(data, id);
+    return !s.playing && !firstFree(s);
+  });
+  data.tokens.push(token);
+  const started = canStart.indexOf(true);
+  if (started >= 0) startGame(token, started, now);
+  const places = token.games.map((g, i) => {
+    if (i === started) return null;
+    return gameState(data, g.gameId).line.findIndex((x) => x.token === token) + 1;
+  });
+  return { token, started: started >= 0 ? started : null, places };
+}
+
+export function startGame(token, index, now) {
+  const g = token.games[index];
+  g.startedAt = now;
+  g.endedAt = null;
+  g.result = null;
+}
+
+export function endGame(token, index, result, now) {
+  const g = token.games[index];
+  g.result = result;
+  g.endedAt = now;
+}
+
+// "Not here": to the back of that game's line.
+export function sendToBack(token, index, now) {
+  token.games[index].lineAt = now;
+}
+
+// Minutes the player stood waiting: before their first game, and between the two.
+// null when the token has no table times (tokens from before the line existed, or finished by hand).
+export function waitMinutes(token) {
+  const games = [...token.games].sort((a, b) => String(a.startedAt).localeCompare(String(b.startedAt)));
+  if (!games.every((g) => g.startedAt && g.endedAt)) return null;
+  const ms = (a, b) => Math.max(0, Date.parse(b) - Date.parse(a));
+  return (ms(token.startedAt, games[0].startedAt) + ms(games[0].endedAt, games[1].startedAt)) / 60000;
+}
+
 // ---- Prize stock ----------------------------------------------------------
 
 // How many of a prize have gone out. Everyone's prize goes out once per finished token.
@@ -224,6 +319,12 @@ export function computeStats(data, now = new Date()) {
   const quickest = leaders(timed, minutes, true)[0];
   const tokenTime = (t) => t && { name: playerById.get(t.playerId)?.name ?? "?", minutes: minutes(t) };
 
+  // Waiting for a game ----------------------------------------------------------
+  const waited = done.filter((t) => waitMinutes(t) != null);
+  const avgWait = waited.length ? waited.reduce((n, t) => n + waitMinutes(t), 0) / waited.length : null;
+  const longestWaitToken = leaders(waited, waitMinutes)[0];
+  const longestWait = longestWaitToken && { name: playerById.get(longestWaitToken.playerId)?.name ?? "?", minutes: waitMinutes(longestWaitToken) };
+
   // Players ---------------------------------------------------------------
   const tokensOf = new Map();
   for (const t of done) tokensOf.set(t.playerId, [...(tokensOf.get(t.playerId) || []), t]);
@@ -285,6 +386,8 @@ export function computeStats(data, now = new Date()) {
     avgMinutes,
     longest: tokenTime(longest),
     quickest: tokenTime(quickest),
+    avgWait,
+    longestWait,
     byType,
     byClass,
     typeStats,
@@ -310,7 +413,7 @@ export function tokensToCsv(data) {
   const header = [
     "token_id", "player", "player_type", "class", "registered_at",
     "game_1", "result_1", "game_2", "result_2",
-    "won_any", "prize", "everyone_got", "started_at", "finished_at", "minutes",
+    "won_any", "prize", "everyone_got", "started_at", "finished_at", "minutes", "waited_minutes",
   ];
   const rows = finishedTokens(data).map((t) => {
     const p = playerById.get(t.playerId) || {};
@@ -320,6 +423,7 @@ export function tokensToCsv(data) {
       gameName(t.games[0].gameId), t.games[0].result, gameName(t.games[1].gameId), t.games[1].result,
       wonAny(t) ? "yes" : "no", rewardName(t.rewardId), everyone, t.startedAt, t.finishedAt,
       Number.isFinite(minutes) ? minutes.toFixed(1) : "",
+      waitMinutes(t)?.toFixed(1) ?? "",
     ];
   });
   return [header, ...rows].map((row) => row.map(csvField).join(",")).join("\r\n") + "\r\n";
@@ -368,6 +472,10 @@ export function parseData(text) {
     for (const g of t.games) {
       if (!gameIds.has(g.gameId)) fail("a token names an unknown game");
       if (g.result != null && !RESULTS.includes(g.result)) fail("a token has an unknown result");
+      for (const key of ["startedAt", "endedAt", "lineAt"]) {
+        if (g[key] === undefined) g[key] = null; // saved before the waiting line existed
+        if (g[key] !== null && !isTime(g[key])) fail("a token has a bad game time");
+      }
     }
     if (t.rewardId != null && !rewardIds.has(t.rewardId)) fail("a token names an unknown prize");
     if (t.finishedAt != null && !isTime(t.finishedAt)) fail("a token has a bad finish time");

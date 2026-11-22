@@ -2,6 +2,7 @@ import {
   PLAYER_TYPES, RESULTS, newId, defaultData, checkGamePick, checkFinish, wonAny, resultsComplete,
   openTokens, finishedTokens, computeStats, tokensToCsv, parseData,
   DEFAULT_TITLE, givenCount, leftCount, parseStock, SLOT_MINUTES, MIN_PLAYS_FOR_RATE,
+  gameState, nextUp, startToken, startGame, endGame, sendToBack, isBusy, waitMinutes,
 } from "./rules.js";
 import { load, save, tokensSinceBackup, askPersistent, shareFile } from "./store.js";
 
@@ -63,13 +64,13 @@ function commit() {
 }
 
 let toastTimer;
-function toast(message, undo) {
+function toast(message, undo, ms) {
   const el = $("#toast");
   el.innerHTML = `<span>${esc(message)}</span>${undo ? '<button type="button" data-action="undo">Undo</button>' : ""}`;
   el.hidden = false;
   toastUndo = undo || null;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; toastUndo = null; }, undo ? 7000 : 2500);
+  toastTimer = setTimeout(() => { el.hidden = true; toastUndo = null; }, ms ?? (undo ? 7000 : 2500));
 }
 let toastUndo = null;
 
@@ -86,7 +87,10 @@ function render() {
   badge.textContent = open;
   $("#title").textContent = data.title;
   document.title = data.title;
-  $("#top-count").textContent = `${finishedTokens(data).length} done · ${open} in play`;
+  const openList = openTokens(data);
+  const playing = openList.filter((t) => isBusy(t) || resultsComplete(t)).length;
+  const waiting = openList.length - playing;
+  $("#top-count").textContent = `${finishedTokens(data).length} done · ${playing} playing${waiting ? ` · ${waiting} waiting` : ""}`;
   renderBanner();
 
   if (ui.editing) view.innerHTML = editorHtml();
@@ -102,17 +106,62 @@ function renderBanner() {
     el.hidden = false;
     return;
   }
+  const up = nextUp(data);
+  alertIfNew(up);
+  const parts = up.map((x) => `<span class="banner-line call">
+      <span><b>${esc(game(x.gameId)?.name)}</b> is free: call <b>${esc(player(x.token.playerId)?.name)}</b></span>
+      <span class="banner-btns">
+        <button class="btn primary" data-action="call-started" data-id="${x.token.id}" data-i="${x.index}">Started</button>
+        <button class="btn" data-action="not-here" data-id="${x.token.id}" data-i="${x.index}">Not here</button>
+      </span></span>`);
   const low = data.rewards.filter(isLow);
-  const parts = [];
   if (low.length) {
     parts.push(`<span>Running low: ${low.map((r) => `<b>${esc(r.name)}</b> ${leftText(r)}`).join(", ")}</span>`);
   }
   if (since >= BACKUP_NAG_EVERY) {
     parts.push(`<span class="banner-line"><span>${since} tokens since the last backup.</span><button class="btn" data-action="backup">Back up</button></span>`);
   }
-  el.className = "banner";
+  el.className = up.length ? "banner calling" : "banner";
   el.innerHTML = parts.join("");
   el.hidden = parts.length === 0;
+}
+
+// A buzz and a beep when someone new can go on a game. Only new calls alert, not every redraw,
+// and not the ones already showing when the page opens.
+let announced = null;
+function alertIfNew(up) {
+  const keys = new Set(up.map((x) => `${x.token.id}:${x.index}`));
+  const fresh = announced && [...keys].some((k) => !announced.has(k));
+  announced = keys;
+  if (!fresh) return;
+  try { navigator.vibrate?.([200, 100, 200]); } catch {}
+  beep();
+}
+
+// Browsers only allow sound after a tap, so the audio is set up on the first one.
+let audio = null;
+document.addEventListener("pointerdown", () => {
+  try {
+    audio ??= new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === "suspended") audio.resume();
+  } catch {}
+}, { capture: true });
+
+function beep() {
+  try {
+    if (!audio) return;
+    const t = audio.currentTime;
+    for (const start of [0, 0.25]) {
+      const osc = audio.createOscillator();
+      const gain = audio.createGain();
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.25, t + start);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + start + 0.2);
+      osc.connect(gain).connect(audio.destination);
+      osc.start(t + start);
+      osc.stop(t + start + 0.2);
+    }
+  } catch {}
 }
 
 // New token -------------------------------------------------------------
@@ -135,13 +184,33 @@ function startHtml() {
         const on = ui.picked.includes(g.id);
         const full = ui.picked.length >= 2 && !on;
         return `<button class="choice" data-action="toggle-game" data-id="${g.id}" aria-pressed="${on}" ${full ? "disabled" : ""}>
-          <span class="num">${i + 1}</span>${esc(g.name)}</button>`;
+          <span class="num">${i + 1}</span>${esc(g.name)}${tableStatusHtml(g.id)}</button>`;
       }).join("")}
     </div>
     ${error ? `<p class="small" style="color:var(--danger)">${esc(error)}</p>` : ""}
     <p></p>
     <button class="btn primary block" data-action="start-token" ${ui.picked.length === 2 && !error ? "" : "disabled"}>Start token</button>
   `;
+}
+
+function tableStatusHtml(gameId) {
+  const s = gameState(data, gameId);
+  if (!s.playing && !s.line.length) return `<span class="left">free</span>`;
+  const on = s.playing ? `${esc(player(s.playing.token.playerId)?.name)} playing` : "free";
+  return `<span class="left busy">${on}${s.line.length ? ` · ${s.line.length} waiting` : ""}</span>`;
+}
+
+const ordinal = (n) => `${n}${n % 10 === 1 && n % 100 !== 11 ? "st" : n % 10 === 2 && n % 100 !== 12 ? "nd" : n % 10 === 3 && n % 100 !== 13 ? "rd" : "th"}`;
+
+// What the toast tells the player after Start token.
+function startPlanText(name, result) {
+  const g = (i) => game(result.token.games[i].gameId)?.name;
+  const waitFor = (i) => {
+    const s = gameState(data, result.token.games[i].gameId);
+    return s.playing || result.places[i] > 1 ? `${g(i)} (${ordinal(result.places[i])} in line)` : g(i);
+  };
+  if (result.started != null) return `${name}: play ${g(result.started)} now, then ${waitFor(1 - result.started)}.`;
+  return `${name} waits: ${ordinal(result.places[0])} in line for ${g(0)}, ${ordinal(result.places[1])} for ${g(1)}.`;
 }
 
 function playerMatches() {
@@ -208,10 +277,39 @@ function tokenCardHtml(t, showTime) {
   </button>`;
 }
 
+function tableCardHtml(gameId, st) {
+  const nameBtn = (t) => `<button class="name-link" data-action="edit-token" data-id="${t.id}">${esc(player(t.playerId)?.name)}</button>`;
+  const lineHtml = st.line.map(({ token }) => {
+    const on = token.games.find((g) => g.startedAt && !g.result);
+    return nameBtn(token) + (on ? ` <span class="muted">(on ${esc(game(on.gameId)?.name)})</span>` : "");
+  }).join(", ");
+  const p = st.playing;
+  return `<div class="card table-card">
+    <div class="head"><span class="name">${esc(game(gameId)?.name)}</span>
+      <span class="muted small">${p ? `${minutesSince(p.token.games[p.index].startedAt)} min` : "free"}</span></div>
+    ${p ? `<div class="on-table">${nameBtn(p.token)} <span class="small muted">${who(player(p.token.playerId))}</span></div>
+      <div class="choices">
+        ${RESULTS.map((r) => `<button class="choice ${r}" data-action="end-game" data-id="${p.token.id}" data-i="${p.index}" data-r="${r}">${cap(r)}</button>`).join("")}
+      </div>` : ""}
+    ${st.line.length ? `<div class="small line-list"><b>Waiting:</b> ${lineHtml}</div>` : ""}
+  </div>`;
+}
+
 function playHtml() {
   const open = openTokens(data).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
   if (!open.length) return `<div class="empty">Nobody is playing right now.<br><br><button class="btn primary" data-tab="start">Start a token</button></div>`;
-  return `<h2>In play</h2><p class="small muted">Tap a player when they finish both games.</p>${open.map((t) => tokenCardHtml(t, false)).join("")}`;
+  const ready = open.filter(resultsComplete);
+  const tables = data.games.map((g) => ({ g, st: gameState(data, g.id) }));
+  const used = tables.filter((x) => x.st.playing || x.st.line.length);
+  const free = tables.filter((x) => !x.st.playing && !x.st.line.length);
+  return `
+    ${ready.length ? `<h2>Pick a prize</h2><p class="small muted">Both games done. Tap to finish the token.</p>
+      ${ready.map((t) => tokenCardHtml(t, false)).join("")}` : ""}
+    <h2>Tables</h2>
+    <p class="small muted">Tap Won or Lost when a game ends. Tap a name to change or cancel their token.</p>
+    ${used.map((x) => tableCardHtml(x.g.id, x.st)).join("")}
+    ${free.length ? `<p class="small muted">Free, nobody waiting: ${esc(nameList(free.map((x) => x.g.name), 8))}</p>` : ""}
+  `;
 }
 
 // Editing a token (finishing one in play, or fixing one in the log) ------------
@@ -302,6 +400,7 @@ function highlightsHtml(s) {
   if (s.topPrize.length) add("Favourite prize", esc(nameList(s.topPrize.map((r) => r.name))), `picked ${s.topPrize[0].count}×`);
   if (s.classStats.length > 1) add("Most active class", esc(s.classStats[0].cls), plural(s.classStats[0].tokens, "token"));
   if (s.topWinners.length) add("Top winner", esc(s.topWinners[0].name), `${plural(s.topWinners[0].wins, "win")} in ${s.topWinners[0].plays} games`);
+  if (s.longestWait && s.longestWait.minutes >= 1) add("Longest wait", esc(s.longestWait.name), `${Math.round(s.longestWait.minutes)} min`);
   if (s.longest && s.tokens > 1) add("Longest token", esc(s.longest.name), `${Math.round(s.longest.minutes)} min`);
   return rows.length ? `<div class="card highlights">${rows.join("")}</div>` : "";
 }
@@ -329,6 +428,9 @@ function statsHtml() {
       ${kpi(s.returning, "came back for more")}
       ${kpi(s.avgMinutes == null ? "–" : `${Math.round(s.avgMinutes)} min`, "per token, average")}
       ${kpi(s.tokensPerHour == null ? "–" : Math.round(s.tokensPerHour), "tokens an hour")}
+      ${s.avgWait == null ? "" : `
+      ${kpi(`${Math.round(s.avgWait)} min`, "waiting per token, average")}
+      ${kpi(finishedTokens(data).filter((t) => waitMinutes(t) >= 1).length, "had to wait for a game")}`}
     </div>
 
     <h2>How players did</h2>
@@ -477,13 +579,10 @@ const actions = {
     const error = checkGamePick(data, ui.picked);
     if (error) return toast(error);
     const name = player(ui.playerId).name;
-    data.tokens.push({
-      id: newId(), playerId: ui.playerId, startedAt: nowIso(),
-      games: ui.picked.map((gameId) => ({ gameId, result: null })), rewardId: null, finishedAt: null,
-    });
+    const result = startToken(data, ui.playerId, ui.picked, nowIso());
     resetStart();
     commit();
-    toast(`Token started for ${name}.`);
+    toast(startPlanText(name, result), null, 8000);
   },
   "edit-token": (el) => {
     const t = data.tokens.find((x) => x.id === el.dataset.id);
@@ -506,14 +605,51 @@ const actions = {
     if (error) return toast(error);
     const before = structuredClone(t);
     const finishing = !t.finishedAt;
-    t.games = draft.games;
+    const now = nowIso();
+    t.games = draft.games.map((g) => (g.result && !g.endedAt ? { ...g, endedAt: now } : g));
     t.rewardId = rewardId;
-    if (finishing) t.finishedAt = nowIso();
+    if (finishing) t.finishedAt = now;
     ui.editing = null;
     commit();
     const name = player(t.playerId)?.name;
     toast(finishing ? `${name} finished${rewardId ? ` · ${reward(rewardId).name}` : ""}.` : "Saved.", () => {
       Object.assign(t, before);
+      commit();
+    });
+  },
+  "end-game": (el) => {
+    const t = data.tokens.find((x) => x.id === el.dataset.id);
+    const i = Number(el.dataset.i);
+    const before = structuredClone(t.games);
+    endGame(t, i, el.dataset.r, nowIso());
+    if (resultsComplete(t)) ui.editing = { tokenId: t.id, results: t.games.map((g) => g.result), rewardId: undefined };
+    commit();
+    if (ui.editing) window.scrollTo(0, 0);
+    toast(`${player(t.playerId)?.name} ${el.dataset.r} ${game(t.games[i].gameId)?.name}.`, () => {
+      t.games = before;
+      ui.editing = null;
+      commit();
+    });
+  },
+  "call-started": (el) => {
+    const t = data.tokens.find((x) => x.id === el.dataset.id);
+    const i = Number(el.dataset.i);
+    if (!nextUp(data).some((x) => x.token === t && x.index === i)) return render();
+    startGame(t, i, nowIso());
+    commit();
+    toast(`${player(t.playerId)?.name} is on ${game(t.games[i].gameId)?.name}.`, () => {
+      t.games[i].startedAt = null;
+      commit();
+    });
+  },
+  "not-here": (el) => {
+    const t = data.tokens.find((x) => x.id === el.dataset.id);
+    const i = Number(el.dataset.i);
+    const before = t.games[i].lineAt;
+    sendToBack(t, i, nowIso());
+    commit();
+    toast(`${player(t.playerId)?.name} moved to the back of the line.`, () => {
+      t.games[i].lineAt = before;
       commit();
     });
   },

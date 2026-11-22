@@ -226,3 +226,20 @@ label.field { display: block; margin: 12px 0 6px; font-weight: 600; }
 .table th { text-align: left; font-size: 13px; font-weight: 600; color: var(--muted); padding: 0 6px 8px; }
 .table td { padding: 8px 6px; border-top: 1px solid var(--line); }
 .table .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Tables and the waiting line */
+.choice .left.busy { color: var(--warn-ink); }
+.table-card .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.table-card .head .name { font-weight: 700; font-size: 18px; }
+.table-card .on-table { margin-bottom: 10px; }
+.table-card .on-table .name-link { font-size: 18px; }
+.table-card .line-list { margin-top: 10px; }
+.name-link {
+  background: none; border: 0; padding: 4px 0; font-weight: 700; color: var(--brand);
+  text-decoration: underline; cursor: pointer; min-height: 36px;
+}
+.banner.calling { position: sticky; top: 56px; z-index: 4; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); }
+.banner-line.call { flex-wrap: wrap; }
+.banner-line + .banner-line { padding-top: 10px; border-top: 1px solid currentColor; }
+.banner-btns { display: flex; gap: 8px; margin-left: auto; }
+.banner-btns .btn { min-height: 44px; padding: 8px 14px; }
