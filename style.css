@@ -257,3 +257,13 @@ label.field { display: block; margin: 12px 0 6px; font-weight: 600; }
   background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
 .seg-btn { min-height: 44px; border: 0; border-radius: 9px; background: none; font-weight: 600; color: var(--muted); cursor: pointer; }
 .seg-btn[aria-pressed="true"] { background: var(--brand); color: var(--brand-ink); }
+
+/* Playing: every game at a glance */
+.all-games { padding: 4px 14px; }
+.game-row { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 0; }
+.game-row + .game-row { border-top: 1px solid var(--line); }
+.game-row .num { flex: 0 0 1.5em; color: var(--muted); font-size: 14px; }
+.game-row .game { flex: 1; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.game-row .pill { white-space: nowrap; }
+.game-row .pill .name-link { font-size: inherit; min-height: 0; padding: 0; color: inherit; }
+.pill.free { background: var(--won-soft); border-color: var(--won); color: var(--won); }

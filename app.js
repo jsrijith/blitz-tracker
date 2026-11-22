@@ -282,7 +282,8 @@ function playHtml() {
   const playing = playingNow(data);
   const ready = openTokens(data).filter(resultsComplete).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
   if (!playing.length && !ready.length) {
-    return `<div class="empty">Nobody is playing right now.<br><br><button class="btn primary" data-tab="queue">Go to the queue</button></div>`;
+    return `<div class="empty">Nobody is playing right now.<br><br><button class="btn primary" data-tab="queue">Go to the queue</button></div>
+      ${allGamesHtml()}`;
   }
   return `
     ${ready.length ? `<h2>Pick a prize</h2><p class="small muted">Both games done. Tap to finish the token.</p>
@@ -301,7 +302,23 @@ function playHtml() {
         </div>
       </div>`;
     }).join("")}` : ""}
+    ${allGamesHtml()}
   `;
+}
+
+// Every game at a glance: free, or who is on it, and how many in the queue want it.
+function allGamesHtml() {
+  const rows = data.games.map((g, n) => {
+    const s = gameState(data, g.id);
+    const status = s.playing
+      ? `<span class="pill in-use">${nameBtn(s.playing.token)} · ${minutesSince(s.playing.token.games[s.playing.index].startedAt)} min</span>`
+      : `<span class="pill free">Free</span>`;
+    const want = s.wanted.length ? `<span class="small muted">${s.wanted.length} in queue</span>` : "";
+    return `<div class="game-row"><span class="num">${n + 1}</span><span class="game">${esc(g.name)}</span>${want}${status}</div>`;
+  });
+  const free = data.games.filter((g) => !gameState(data, g.id).playing).length;
+  return `<h2>All games <span class="muted small">(${free} of ${data.games.length} free)</span></h2>
+    <div class="card all-games">${rows.join("")}</div>`;
 }
 
 // Editing a token (finishing one in play, or fixing one in the log) ------------

@@ -29,6 +29,8 @@ works without internet.
    Rather not wait? Tap **Change** next to a game to swap it for another one. They keep their
    place in the queue. Only a game they haven't started can be changed.
 4. **Playing**: who is on which game. When a player says they're done, tap **Won** or **Lost**.
+   **All games** at the bottom shows every game: free, or who is on it, and how many in the queue
+   want it.
    After their first game they go back to the queue, in the same place, for their other game.
    After their second, pick their prize and tap **Finish token**. Made a mistake? Tap **Undo** on
    the message at the bottom. Tap a name to see both their games (playing now, waiting with
