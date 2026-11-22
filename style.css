@@ -193,7 +193,7 @@ label.field { display: block; margin: 12px 0 6px; font-weight: 600; }
 
 .tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
-  display: grid; grid-template-columns: repeat(6, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   background: var(--card); border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom);
 }
@@ -251,3 +251,9 @@ label.field { display: block; margin: 12px 0 6px; font-weight: 600; }
 .token-games .token-game { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; }
 .token-games .token-game + .token-game { border-top: 1px solid var(--line); }
 .pill.playing { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); }
+
+/* Settings: Setup | Stats switch */
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin-bottom: 16px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+.seg-btn { min-height: 44px; border: 0; border-radius: 9px; background: none; font-weight: 600; color: var(--muted); cursor: pointer; }
+.seg-btn[aria-pressed="true"] { background: var(--brand); color: var(--brand-ink); }

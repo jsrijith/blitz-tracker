@@ -14,6 +14,7 @@ let saveFailed = false;
 
 const ui = {
   tab: "start",
+  settingsView: "setup", // "setup" or "stats", inside the Settings tab
   search: "",
   playerId: null,        // player picked for a new token
   newPlayer: null,       // { name, type, cls } while the form is open
@@ -95,7 +96,7 @@ function render() {
 
   if (ui.editing) view.innerHTML = editorHtml();
   else if (ui.changing) view.innerHTML = changeHtml();
-  else view.innerHTML = { start: startHtml, queue: queueHtml, play: playHtml, log: logHtml, stats: statsHtml, setup: setupHtml }[ui.tab]();
+  else view.innerHTML = { start: startHtml, queue: queueHtml, play: playHtml, log: logHtml, settings: settingsHtml }[ui.tab]();
 }
 
 function setBadge(sel, n) {
@@ -485,6 +486,14 @@ function statsHtml() {
   `;
 }
 
+// Settings: Setup before the stall opens, Stats once it's over -----------------
+
+function settingsHtml() {
+  const seg = (v, label) => `<button class="seg-btn" data-action="settings-view" data-view="${v}" aria-pressed="${ui.settingsView === v}">${label}</button>`;
+  return `<div class="seg" role="group" aria-label="Settings">${seg("setup", "Setup")}${seg("stats", "Stats")}</div>
+    ${ui.settingsView === "stats" ? statsHtml() : setupHtml()}`;
+}
+
 // Setup -----------------------------------------------------------------------
 
 function setupHtml() {
@@ -633,6 +642,7 @@ const actions = {
     window.scrollTo(0, 0);
   },
   "change-close": () => { ui.changing = null; render(); },
+  "settings-view": (el) => { ui.settingsView = el.dataset.view; render(); window.scrollTo(0, 0); },
   "change-pick": (el) => {
     const t = data.tokens.find((x) => x.id === ui.changing.tokenId);
     const i = ui.changing.index;

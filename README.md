@@ -15,7 +15,7 @@ picked, how they did, and which prize they took.
 Open the app's link on the phone, then use **Add to Home screen**. After it has opened once, it also
 works without internet.
 
-1. **Setup**: before the stall opens, set the stall's name, type in the 8 game names, and enter
+1. **Settings → Setup**: before the stall opens, set the stall's name, type in the 8 game names, and enter
    how many of each prize you're starting with. The app then counts down what's left, shows it on
    the prize buttons, and warns at the top when something gets down to 3. Leave a quantity blank to
    not count that prize. If you restock, add the new ones to the starting number.
@@ -35,7 +35,7 @@ works without internet.
    their place in the queue, or won/lost, and what they picked at registration if they changed),
    or to fix or cancel the token.
 5. **Log**: every finished token. Tap one to fix or delete it.
-6. **Stats**: highlights first (busiest half hour, most players at once, most and least popular
+6. **Settings → Stats**, once the stall is over: highlights first (busiest half hour, most players at once, most and least popular
    game, hardest and easiest game, favourite pair and prize, most active class, top winner), then
    how players did (won both, won one, lost both), busy times, plays and win rate per game,
    students against teachers, classes, prizes given and left, and the players with the most wins
@@ -46,11 +46,11 @@ works without internet.
 Everything is kept in this phone's browser. Nothing is sent anywhere. That also means clearing the
 browser, or using a private/incognito tab, **loses it**.
 
-- **Setup → Back up** saves a `.json` file, through the share sheet where the phone has one (send it
+- **Settings → Setup → Back up** saves a `.json` file, through the share sheet where the phone has one (send it
   to yourself on WhatsApp, email or Drive). The app reminds you after every 20 tokens.
-- **Setup → Export for a spreadsheet** gives a `.csv` with one row per token, for Google Sheets or
+- **Settings → Setup → Export for a spreadsheet** gives a `.csv` with one row per token, for Google Sheets or
   Excel.
-- **Setup → Restore from a backup** loads a `.json` backup back in, on this phone or another one.
+- **Settings → Setup → Restore from a backup** loads a `.json` backup back in, on this phone or another one.
 
 Never commit backup or CSV files to this repo: they contain children's names. `.gitignore` blocks
 them.
