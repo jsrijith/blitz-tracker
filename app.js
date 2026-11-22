@@ -417,7 +417,9 @@ function logHtml() {
   let list;
   if (ui.logView === "players") {
     const rows = playerRows().filter((r) => match(r.p.id));
-    list = rows.length ? `<div class="card all-players">${rows.map(playerRowHtml).join("")}</div>`
+    list = rows.length ? `<div class="card players-card"><div class="table-wrap"><table class="table players-table">
+      <thead><tr><th>Player</th><th>Playing now</th><th>Played</th><th>Yet to play</th></tr></thead>
+      <tbody>${rows.map(playerRowHtml).join("")}</tbody></table></div></div>`
       : `<div class="empty">${q ? "No match." : "Nobody has had a token yet."}</div>`;
   } else {
     const endOf = (t) => t.finishedAt ?? t.leftAt;
@@ -462,27 +464,34 @@ function playerRows() {
   });
 }
 
+// One row of the Players table: who, the game they're on, the games they've played, and the rest.
 function playerRowHtml(r) {
   const t = r.statuses[0]?.t ?? r.latest;
-  const lastLeft = !r.latest.finishedAt && r.latest.leftAt ? (r.latest.leftReason === "closed" ? "Stall closed" : "Left") : null;
-  const status = r.statuses.length ? r.statuses.map((s) => s.html).join("") : `<span class="pill">${lastLeft ?? "Done"}</span>`;
-  // Every game on every token: played first, then the one being played, then the ones to come.
-  const stage = (g) => (g.result ? 0 : g.startedAt ? 1 : 2);
-  const tags = r.all.flatMap((tok) => [...tok.games].sort((a, b) => stage(a) - stage(b)).map((g) => {
-    const name = esc(game(g.gameId)?.name);
-    if (g.result) return `<span class="tag-game ${g.result}">${name} · ${cap(g.result)}</span>`;
-    if (tok.leftAt) return `<span class="tag-game">${name} · ${g.startedAt ? "Stopped" : "Not played"}</span>`;
-    if (g.startedAt) return `<span class="tag-game playing">${name} · Playing</span>`;
-    if (tok.finishedAt) return `<span class="tag-game">${name} · Not played</span>`;
-    return `<span class="tag-game todo">${name} · To play</span>`;
-  }));
-  return `<div class="player-row">
-    <div class="player-top">
-      <div class="who-col">${nameBtn(t)}<div class="small muted">${who(r.p)} · ${plural(r.tokens, "token")} · ${plural(r.wins, "win")}</div></div>
-      <div class="status-col">${status}</div>
-    </div>
-    <div class="player-games">${tags.join("")}</div>
-  </div>`;
+  const inQueue = queue(data);
+  const now = [], played = [], todo = [];
+  for (const tok of r.all) {
+    for (const g of tok.games) {
+      const name = esc(game(g.gameId)?.name);
+      if (g.result) played.push(`<span class="tag-game ${g.result}">${name} · ${cap(g.result)}</span>`);
+      else if (tok.leftAt) todo.push(`<span class="tag-game">${name} · ${g.startedAt ? "stopped" : tok.leftReason === "closed" ? "stall closed" : "left"}</span>`);
+      else if (g.startedAt) {
+        const long = isLongGame(g, Date.now());
+        now.push(`<span class="tag-game ${long ? "long" : "playing"}">${name} · ${minutesSince(g.startedAt)} min</span>`);
+      } else if (tok.finishedAt) todo.push(`<span class="tag-game">${name} · not played</span>`);
+      else {
+        const place = inQueue.indexOf(tok) + 1;
+        todo.push(`<span class="tag-game todo">${name}${place ? ` · ${ordinal(place)} in queue` : ""}</span>`);
+      }
+    }
+    if (!tok.finishedAt && !tok.leftAt && resultsComplete(tok)) now.push(`<span class="tag-game prize">Pick a prize</span>`);
+  }
+  const cell = (items) => (items.length ? `<div class="cell-tags">${items.join("")}</div>` : `<span class="muted">–</span>`);
+  return `<tr>
+    <td>${nameBtn(t)}<div class="small muted">${who(r.p)}</div><div class="small muted">${plural(r.tokens, "token")} · ${plural(r.wins, "win")}</div></td>
+    <td>${cell(now)}</td>
+    <td>${cell(played)}</td>
+    <td>${cell(todo)}</td>
+  </tr>`;
 }
 
 // Stats -----------------------------------------------------------------------

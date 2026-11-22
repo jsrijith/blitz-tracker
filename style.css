@@ -268,21 +268,6 @@ label.field { display: block; margin: 12px 0 6px; font-weight: 600; }
 .game-row .pill .name-link { font-size: inherit; min-height: 0; padding: 0; color: inherit; }
 .pill.free { background: var(--won-soft); border-color: var(--won); color: var(--won); }
 
-/* Log: every player at a glance */
-.all-players { padding: 4px 14px; }
-.player-row { padding: 10px 0; }
-.player-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.player-games { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.tag-game { font-size: 13px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
-.tag-game.won { background: var(--won-soft); border-color: var(--won); color: var(--won); }
-.tag-game.lost { background: var(--lost-soft); border-color: var(--lost); color: var(--lost); }
-.tag-game.playing { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); font-weight: 600; }
-.tag-game.todo { border-style: dashed; color: var(--ink); }
-.player-row + .player-row { border-top: 1px solid var(--line); }
-.player-row .who-col { min-width: 0; }
-.player-row .status-col { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: 0 0 auto; }
-.player-row .status-col .pill { white-space: nowrap; }
-.kind-btn { min-height: 44px; padding: 6px 10px; font-size: 14px; flex: 0 0 auto; }
 
 /* Long games, games switched off, the token box check */
 .play-card.long { border-color: var(--danger); background: var(--lost-soft); }
@@ -303,3 +288,13 @@ label.field { display: block; margin: 12px 0 6px; font-weight: 600; }
 .choice.game-pick[aria-pressed="true"] .num,
 .choice.game-pick[aria-pressed="true"] .left { color: var(--brand-ink); opacity: .9; }
 .choice.game-pick:disabled:not(.game-off) { opacity: .45; }
+
+/* Log: the Players table */
+.players-card { padding: 4px 8px; }
+.players-table td { vertical-align: top; }
+.players-table th, .players-table td { text-align: left; }
+.players-table th:first-child, .players-table td:first-child { min-width: 7.5em; }
+.players-table .name-link { font-size: 16px; min-height: 0; padding: 0; }
+.cell-tags { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.tag-game.long { background: var(--lost-soft); border-color: var(--danger); color: var(--danger); font-weight: 600; }
+.tag-game.prize { background: var(--brand-soft); border-color: var(--brand); color: var(--ink); font-weight: 600; }

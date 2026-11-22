@@ -37,13 +37,13 @@ works without internet.
    want it.
    After their first game they go back to the queue, in the same place, for their other game.
    After their second, pick their prize and tap **Finish token**. Made a mistake? Tap **Undo** on
-   the message at the bottom. Tap a name to see both their games (playing now, waiting with
+   the message at the top. Tap a name to see both their games (playing now, waiting with
    their place in the queue, or won/lost, and what they picked at registration if they changed),
    or to fix or cancel the token. A player who walked off: tap their name, then **Left without
    finishing**. Their token stays in the Log, and **Back in the queue** undoes it.
-5. **Log**: **Players** lists everyone who has had a token, with where they are now (playing,
-   waiting and their place in the queue, picking a prize, or done), their tokens and wins, and
-   each of their games: won, lost, playing, or still to play.
+5. **Log**: **Players** is a table of everyone who has had a token: the game they're on now (red
+   after 20 minutes), the games they've played (won or lost), and the games they've yet to play
+   (with their place in the queue).
    **Tokens** lists every finished token, and those whose player left: tap one to fix or delete it.
 6. **Settings → Setup → Close the stall** at the end of the day marks everyone still in the queue
    or playing as not finished. Then **Settings → Stats**: count the tokens in the box and type the
