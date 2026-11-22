@@ -148,14 +148,20 @@ function startHtml() {
       ${data.games.map((g, i) => {
         const on = ui.picked.includes(g.id);
         const full = (ui.picked.length >= 2 || g.off) && !on;
-        return `<button class="choice" data-action="toggle-game" data-id="${g.id}" aria-pressed="${on}" ${full ? "disabled" : ""}>
-          <span class="num">${i + 1}</span>${esc(g.name)}${tableStatusHtml(g.id)}</button>`;
+        return `<button class="choice game-pick ${gameStateClass(g.id)}" data-action="toggle-game" data-id="${g.id}" aria-pressed="${on}" ${full ? "disabled" : ""}>
+          <span class="num">${i + 1}</span>${on ? "✓ " : ""}${esc(g.name)}${tableStatusHtml(g.id)}</button>`;
       }).join("")}
     </div>
     ${error ? `<p class="small" style="color:var(--danger)">${esc(error)}</p>` : ""}
     <p></p>
     <button class="btn primary block" data-action="start-token" ${ui.picked.length === 2 && !error ? "" : "disabled"}>Start token</button>
   `;
+}
+
+// Colour for a game button: free, in use or switched off. A picked game is coloured by aria-pressed.
+function gameStateClass(gameId) {
+  if (game(gameId)?.off) return "game-off";
+  return gameState(data, gameId).playing ? "game-busy" : "game-free";
 }
 
 function tableStatusHtml(gameId) {
@@ -280,7 +286,7 @@ function changeHtml() {
     <div class="choices">
       ${data.games.map((g, n) => {
         const ok = !checkChange(data, t, i, g.id);
-        return `<button class="choice" data-action="change-pick" data-id="${g.id}" ${ok ? "" : "disabled"}>
+        return `<button class="choice game-pick ${ok ? gameStateClass(g.id) : "game-off"}" data-action="change-pick" data-id="${g.id}" ${ok ? "" : "disabled"}>
           <span class="num">${n + 1}</span>${esc(g.name)}${ok ? tableStatusHtml(g.id) : `<span class="left">${g.id === old?.id ? "now" : "their other game"}</span>`}</button>`;
       }).join("")}
     </div>
