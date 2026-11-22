@@ -31,7 +31,9 @@ works without internet.
 4. **Playing**: who is on which game. When a player says they're done, tap **Won** or **Lost**.
    After their first game they go back to the queue, in the same place, for their other game.
    After their second, pick their prize and tap **Finish token**. Made a mistake? Tap **Undo** on
-   the message at the bottom. Tap a name to change or cancel a token.
+   the message at the bottom. Tap a name to see both their games (playing now, waiting with
+   their place in the queue, or won/lost, and what they picked at registration if they changed),
+   or to fix or cancel the token.
 5. **Log**: every finished token. Tap one to fix or delete it.
 6. **Stats**: highlights first (busiest half hour, most players at once, most and least popular
    game, hardest and easiest game, favourite pair and prize, most active class, top winner), then

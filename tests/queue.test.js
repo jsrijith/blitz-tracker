@@ -163,3 +163,15 @@ test("a change is refused for the same game twice, a game started or played, or 
   assert.match(checkChange(d, a, 0, "g3"), /haven't started/);
   assert.equal(checkChange(d, a, 1, "g3"), null, "the second game can still change");
 });
+
+test("a change remembers the game picked at registration, and forgets it on changing back", () => {
+  const d = stall();
+  const a = startToken(d, "Alice", ["g1", "g2"], at(0)).token;
+  changeGame(a, 0, "g3");
+  changeGame(a, 0, "g4");
+  assert.deepEqual([a.games[0].gameId, a.games[0].registeredGameId], ["g4", "g1"]);
+  assert.equal(parseData(JSON.stringify(d)).tokens[0].games[0].registeredGameId, "g1");
+  changeGame(a, 0, "g1");
+  assert.equal(a.games[0].gameId, "g1");
+  assert.equal("registeredGameId" in a.games[0], false);
+});

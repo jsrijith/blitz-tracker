@@ -144,8 +144,13 @@ export function checkChange(data, token, index, newGameId) {
 }
 
 // Swaps a game the player is still waiting for. Their place in the queue stays the same.
+// registeredGameId keeps what they picked when they registered; it goes if they change back.
 export function changeGame(token, index, newGameId) {
-  token.games[index].gameId = newGameId;
+  const g = token.games[index];
+  const first = g.registeredGameId ?? g.gameId;
+  g.gameId = newGameId;
+  if (newGameId === first) delete g.registeredGameId;
+  else g.registeredGameId = first;
 }
 
 export function startGame(token, index, now) {
@@ -477,6 +482,7 @@ export function parseData(text) {
     if (!Array.isArray(t.games) || t.games.length !== GAMES_PER_TOKEN) fail("a token doesn't have 2 games");
     for (const g of t.games) {
       if (!gameIds.has(g.gameId)) fail("a token names an unknown game");
+      if (g.registeredGameId != null && !gameIds.has(g.registeredGameId)) fail("a token names an unknown game");
       if (g.result != null && !RESULTS.includes(g.result)) fail("a token has an unknown result");
       for (const key of ["startedAt", "endedAt"]) {
         if (g[key] === undefined) g[key] = null; // saved before the queue existed

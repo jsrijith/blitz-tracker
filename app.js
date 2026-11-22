@@ -305,6 +305,22 @@ function playHtml() {
 
 // Editing a token (finishing one in play, or fixing one in the log) ------------
 
+// Both games on a token and where each one stands, for the top of the token screen.
+function tokenGamesHtml(t) {
+  const place = queue(data).indexOf(t) + 1;
+  const rows = t.games.map((g) => {
+    let status;
+    if (g.result) status = `<span class="pill ${g.result}">${cap(g.result)}</span>`;
+    else if (g.startedAt) status = `<span class="pill playing">Playing now · ${minutesSince(g.startedAt)} min</span>`;
+    else if (t.finishedAt) status = `<span class="muted">not played</span>`;
+    else if (place) status = `<span class="pill in-use">Waiting · ${ordinal(place)} in queue</span>`;
+    else status = `<span class="muted">next, after this game</span>`;
+    const changed = g.registeredGameId ? `<div class="small muted">changed from ${esc(game(g.registeredGameId)?.name)}</div>` : "";
+    return `<div class="token-game"><div><b>${esc(game(g.gameId)?.name)}</b>${changed}</div>${status}</div>`;
+  });
+  return `<div class="card token-games"><div class="small muted">Their games</div>${rows.join("")}</div>`;
+}
+
 function editorHtml() {
   const t = data.tokens.find((x) => x.id === ui.editing.tokenId);
   const p = player(t.playerId);
@@ -317,7 +333,8 @@ function editorHtml() {
 
   return `
     <button class="btn link" data-action="close-editor">‹ Back</button>
-    <div class="card picked"><div><div class="name">${esc(p?.name)}</div><div class="small muted">${who(p)} · started ${time(t.startedAt)}</div></div></div>
+    <div class="card picked"><div><div class="name">${esc(p?.name)}</div><div class="small muted">${who(p)} · registered ${time(t.startedAt)}</div></div></div>
+    ${tokenGamesHtml(t)}
     ${draft.games.map((g, i) => `
       <h2>${esc(game(g.gameId)?.name)}</h2>
       <div class="choices">
