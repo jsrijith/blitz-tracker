@@ -1,12 +1,18 @@
+@font-face {
+  font-family: "Bangers"; /* comic lettering, kept on the phone so it works offline (fonts/OFL.txt) */
+  src: url("fonts/bangers.woff2") format("woff2");
+  font-display: swap;
+}
+
 :root {
-  --bg: #f6f3ec;
-  --card: #ffffff;
-  --ink: #1f2a24;
-  --muted: #5f6b64;
-  --line: #ddd6c8;
-  --brand: #2f6b4f;
+  --bg: #fbf4e4;
+  --card: #fffdf7;
+  --ink: #1b1b1f;
+  --muted: #5e5a52;
+  --line: #e3d8c0;
+  --brand: #1f63b5;
   --brand-ink: #ffffff;
-  --brand-soft: #dcebe2;
+  --brand-soft: #dbe9f8;
   --won: #2f7d3a;
   --won-soft: #dff1df;
   --lost: #a33a2b;
@@ -16,6 +22,13 @@
   --queue-soft: #ffdcc2;
   --queue-ink: #8a3d00;
   --danger: #b3261e;
+  /* Comic touches: ink outlines, a red masthead, a yellow speech bubble */
+  --edge: #1b1b1f;
+  --shadow: #1b1b1f;
+  --pop: #d43a25;
+  --sun: #ffd23f;
+  --dots: rgba(27, 27, 31, .045);
+  --display: "Bangers", "Impact", "Arial Black", system-ui, sans-serif;
   --radius: 14px;
   --tap: 52px;
   color-scheme: light;
@@ -23,14 +36,14 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #141916;
-    --card: #1e2521;
-    --ink: #eef2ef;
-    --muted: #a3afa8;
-    --line: #34403a;
-    --brand: #5fb38a;
-    --brand-ink: #0d1a13;
-    --brand-soft: #24392e;
+    --bg: #17161a;
+    --card: #222127;
+    --ink: #f1ede4;
+    --muted: #aaa49a;
+    --line: #3a3842;
+    --brand: #6aa8ec;
+    --brand-ink: #0b1a2c;
+    --brand-soft: #1d2d42;
     --won: #7fd18b;
     --won-soft: #1f3524;
     --lost: #f0a094;
@@ -40,6 +53,10 @@
     --queue-soft: #42291a;
     --queue-ink: #f7b27c;
     --danger: #f2a49d;
+    --edge: #5d5a66;
+    --shadow: #000000;
+    --pop: #b8321f;
+    --dots: rgba(255, 255, 255, .03);
     color-scheme: dark;
   }
 }
@@ -312,3 +329,80 @@ label.field { display: block; margin: 12px 0 6px; font-weight: 600; }
 .tag-game.free { background: var(--won-soft); border-color: var(--won); color: var(--won); }
 .tag-game.busy { background: var(--warn-soft); border-color: var(--warn-ink); color: var(--warn-ink); font-weight: 600; }
 .tag-game.off { background: var(--bg); border-style: dashed; color: var(--muted); }
+
+/* ---------------------------------------------------------------
+   Comic theme, matched to the Brainstorm Arena posters.
+   Kept light: ink outlines, small offset shadows, comic lettering
+   for headings and numbers only, so names stay easy to read.
+   --------------------------------------------------------------- */
+body {
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--dots) 1.2px, transparent 1.4px);
+  background-size: 14px 14px;
+}
+
+.top {
+  background-color: var(--pop);
+  background-image: radial-gradient(rgba(255, 255, 255, .12) 1.3px, transparent 1.5px);
+  background-size: 10px 10px;
+  border-bottom: 3px solid var(--edge);
+  color: #fff;
+}
+.top h1 {
+  font-family: var(--display); font-weight: 400; font-size: 26px; letter-spacing: 1px;
+  text-shadow: 2px 2px 0 var(--edge);
+}
+.top-count { font-weight: 600; opacity: 1; }
+
+h2 { font-family: var(--display); font-weight: 400; font-size: 23px; letter-spacing: .6px; }
+
+.card, .kpi {
+  border: 2px solid var(--edge);
+  box-shadow: 3px 3px 0 var(--shadow);
+}
+.picked { border-color: var(--edge); }
+.play-card.long { border-color: var(--danger); box-shadow: 3px 3px 0 var(--danger); }
+
+.btn {
+  border: 2px solid var(--edge);
+  box-shadow: 2px 2px 0 var(--shadow);
+  transition: transform .05s, box-shadow .05s;
+}
+.btn.primary { border-color: var(--edge); }
+.btn.danger { border-color: var(--danger); box-shadow: 2px 2px 0 var(--danger); }
+.btn.link { box-shadow: none; }
+.choice { box-shadow: 2px 2px 0 var(--shadow); transition: transform .05s, box-shadow .05s; }
+.btn:active:not(:disabled), .choice:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: none; }
+.btn:disabled, .choice:disabled { box-shadow: none; }
+
+input[type="text"], input[type="search"], input[type="number"], select { border: 2px solid var(--edge); }
+
+.kpi .value { font-family: var(--display); font-weight: 400; font-size: 32px; letter-spacing: 1px; }
+.kpis.three .value { font-size: 28px; }
+.play-card .game-name { font-family: var(--display); font-weight: 400; font-size: 24px; letter-spacing: .6px; }
+
+.place {
+  background: var(--sun); color: #1b1b1f; border: 2px solid var(--edge);
+  font-family: var(--display); font-weight: 400; font-size: 19px;
+}
+
+/* The undo message is a yellow speech bubble */
+.toast {
+  background: var(--sun); color: #1b1b1f;
+  border: 2px solid var(--edge); box-shadow: 4px 4px 0 var(--shadow);
+  font-weight: 600;
+}
+.toast button { color: #1b1b1f; }
+.banner { border: 2px solid var(--edge); }
+
+.seg { border: 2px solid var(--edge); }
+
+.tabs { border-top: 3px solid var(--edge); }
+.tabs button[aria-current="page"] { color: var(--ink); }
+.tabs .ico { display: inline-flex; align-items: center; justify-content: center; min-width: 40px; height: 28px; border: 2px solid transparent; border-radius: 10px; }
+.tabs button[aria-current="page"] .ico { background: var(--sun); color: #1b1b1f; border-color: var(--edge); }
+.badge { background: var(--pop); border: 2px solid var(--card); line-height: 16px; }
+
+.bar { border: 1.5px solid var(--edge); }
+/* Plain choice buttons (Won/Lost, prizes, student/teacher) get the ink outline; game buttons keep their colours. */
+.choice:not([class*="game-"]) { border-color: var(--edge); }

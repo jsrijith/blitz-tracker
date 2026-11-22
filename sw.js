@@ -1,9 +1,9 @@
 // Keeps the app's files on the phone so it opens without internet.
 // Raise CACHE whenever a file below changes, or phones keep the old copy.
-const CACHE = "game-stall-v22";
+const CACHE = "game-stall-v23";
 const FILES = [
   "./", "index.html", "style.css", "app.js", "rules.js", "store.js", "manifest.json",
-  "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png",
+  "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "fonts/bangers.woff2",
 ];
 
 self.addEventListener("install", (e) => {

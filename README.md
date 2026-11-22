@@ -79,6 +79,7 @@ Plain HTML, CSS and JavaScript, with no build step and nothing to install.
 | `rules.js` | Token rules, stats, CSV and backup checks. No browser code, so it's tested with Node |
 | `store.js` | Saving to `localStorage`, sharing files |
 | `sw.js`, `manifest.json` | Offline use and Add to Home screen |
+| `fonts/bangers.woff2` | The comic lettering for headings and numbers (SIL Open Font License, `fonts/OFL.txt`) |
 | `tools/make_icons.py` | Redraws the PNG icons from the same shapes as `icons/icon.svg` |
 
 ```bash
