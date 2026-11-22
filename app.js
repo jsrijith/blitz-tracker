@@ -148,7 +148,7 @@ function startHtml() {
       ${data.games.map((g, i) => {
         const on = ui.picked.includes(g.id);
         const full = (ui.picked.length >= 2 || g.off) && !on;
-        return `<button class="choice game-pick ${gameStateClass(g.id)}" data-action="toggle-game" data-id="${g.id}" aria-pressed="${on}" ${full ? "disabled" : ""}>
+        return `<button class="choice game-pick ${gameStateClass(g.id, true)}" data-action="toggle-game" data-id="${g.id}" aria-pressed="${on}" ${full ? "disabled" : ""}>
           <span class="num">${i + 1}</span>${on ? "✓ " : ""}${esc(g.name)}${tableStatusHtml(g.id)}</button>`;
       }).join("")}
     </div>
@@ -158,10 +158,13 @@ function startHtml() {
   `;
 }
 
-// Colour for a game button: free, in use or switched off. A picked game is coloured by aria-pressed.
-function gameStateClass(gameId) {
+// Colour for a game: free, in use or switched off. A picked game is coloured by aria-pressed.
+// The registration buttons also show "queued" when players are already waiting for the game.
+function gameStateClass(gameId, showQueue = false) {
   if (game(gameId)?.off) return "game-off";
-  return gameState(data, gameId).playing ? "game-busy" : "game-free";
+  const s = gameState(data, gameId);
+  if (showQueue && s.wanted.length) return "game-queued";
+  return s.playing ? "game-busy" : "game-free";
 }
 
 function tableStatusHtml(gameId) {
@@ -286,7 +289,7 @@ function changeHtml() {
     <div class="choices">
       ${data.games.map((g, n) => {
         const ok = !checkChange(data, t, i, g.id);
-        return `<button class="choice game-pick ${ok ? gameStateClass(g.id) : "game-off"}" data-action="change-pick" data-id="${g.id}" ${ok ? "" : "disabled"}>
+        return `<button class="choice game-pick ${ok ? gameStateClass(g.id, true) : "game-off"}" data-action="change-pick" data-id="${g.id}" ${ok ? "" : "disabled"}>
           <span class="num">${n + 1}</span>${esc(g.name)}${ok ? tableStatusHtml(g.id) : `<span class="left">${g.id === old?.id ? "now" : "their other game"}</span>`}</button>`;
       }).join("")}
     </div>

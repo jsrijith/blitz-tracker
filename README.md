@@ -24,7 +24,8 @@ works without internet.
 2. **New token**: when someone hands over a token, type their name. Tap them if they've played
    before, or add them as a new player (student or teacher; for a student, tap Grade or Year and type it,
    like 1A, 5B or 6D). Pick their 2
-   games and tap **Start token**. Each game button shows who is playing it. A game in use can still
+   games and tap **Start token**. Each game button shows who is playing it, coloured green when
+   free, yellow when in use, and orange when players in the queue are already waiting for it. A game in use can still
    be picked: every token goes into the queue.
 3. **Queue**: everyone waiting, in the order they registered. Each player's games show as
    **Give Chess** when the game is free, or "Chess · Alice playing" when it isn't. Tap Give when you
