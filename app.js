@@ -416,7 +416,7 @@ function playerRows() {
     const statuses = open.map((t) => ({ t, ...statusOf(t) })).sort((a, b) => a.rank - b.rank || a.order.localeCompare(b.order));
     const lastDone = done.map((t) => t.finishedAt).sort().at(-1) ?? "";
     const wins = done.reduce((n, t) => n + t.games.filter((g) => g.result === "won").length, 0);
-    rows.push({ p, statuses, tokens: tokens.length, wins, lastDone, open: open[0], latest: tokens.at(-1) });
+    rows.push({ p, statuses, tokens: tokens.length, wins, lastDone, all: tokens, latest: tokens.at(-1) });
   }
   return rows.sort((a, b) => {
     const ra = a.statuses[0]?.rank ?? 9, rb = b.statuses[0]?.rank ?? 9;
@@ -429,9 +429,21 @@ function playerRows() {
 function playerRowHtml(r) {
   const t = r.statuses[0]?.t ?? r.latest;
   const status = r.statuses.length ? r.statuses.map((s) => s.html).join("") : `<span class="pill">Done</span>`;
+  // Every game on every token: played first, then the one being played, then the ones to come.
+  const stage = (g) => (g.result ? 0 : g.startedAt ? 1 : 2);
+  const tags = r.all.flatMap((tok) => [...tok.games].sort((a, b) => stage(a) - stage(b)).map((g) => {
+    const name = esc(game(g.gameId)?.name);
+    if (g.result) return `<span class="tag-game ${g.result}">${name} · ${cap(g.result)}</span>`;
+    if (g.startedAt) return `<span class="tag-game playing">${name} · Playing</span>`;
+    if (tok.finishedAt) return `<span class="tag-game">${name} · Not played</span>`;
+    return `<span class="tag-game todo">${name} · To play</span>`;
+  }));
   return `<div class="player-row">
-    <div class="who-col">${nameBtn(t)}<div class="small muted">${who(r.p)} · ${plural(r.tokens, "token")} · ${plural(r.wins, "win")}</div></div>
-    <div class="status-col">${status}</div>
+    <div class="player-top">
+      <div class="who-col">${nameBtn(t)}<div class="small muted">${who(r.p)} · ${plural(r.tokens, "token")} · ${plural(r.wins, "win")}</div></div>
+      <div class="status-col">${status}</div>
+    </div>
+    <div class="player-games">${tags.join("")}</div>
   </div>`;
 }
 

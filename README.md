@@ -37,7 +37,8 @@ works without internet.
    their place in the queue, or won/lost, and what they picked at registration if they changed),
    or to fix or cancel the token.
 5. **Log**: **Players** lists everyone who has had a token, with where they are now (playing,
-   waiting and their place in the queue, picking a prize, or done) and their tokens and wins.
+   waiting and their place in the queue, picking a prize, or done), their tokens and wins, and
+   each of their games: won, lost, playing, or still to play.
    **Finished tokens** lists every finished token: tap one to fix or delete it.
 6. **Settings → Stats**, once the stall is over: highlights first (busiest half hour, most players at once, most and least popular
    game, hardest and easiest game, favourite pair and prize, most active class, top winner), then
