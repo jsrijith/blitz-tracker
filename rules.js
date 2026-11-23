@@ -511,6 +511,81 @@ export function tokensToCsv(data) {
   return [header, ...rows].map((row) => row.map(csvField).join(",")).join("\r\n") + "\r\n";
 }
 
+// A length of time in words: "45 seconds", "1 minute 15 seconds", "75 minutes". Minutes never turn into hours.
+export function durationText(minutes) {
+  if (minutes == null || !Number.isFinite(minutes)) return "";
+  const total = Math.max(0, Math.round(minutes * 60));
+  const unit = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  if (total < 60) return unit(total, "second");
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return s ? `${unit(m, "minute")} ${unit(s, "second")}` : unit(m, "minute");
+}
+
+// A time of day as 24-hour hh:mm in local time, from an ISO time or a minute of the day.
+function clockText(value) {
+  if (value == null) return "";
+  const m = typeof value === "number" ? value : minuteOfDay(value);
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+const percent = (rate) => (rate == null ? "" : `${Math.round(rate * 100)}%`);
+
+// The day's totals as a few small tables one under another, for a spreadsheet.
+// Only finished tokens count, as on the Stats screen.
+export function statsToCsv(data, now = new Date()) {
+  const s = computeStats(data, now);
+  const typeCount = (type) => s.byType.find((x) => x.type === type)?.count ?? 0;
+  const prizesPicked = finishedTokens(data).filter((t) => t.rewardId != null).length;
+  const named = (x) => x && `${x.name} (${durationText(x.minutes)})`;
+  const busiest = s.busiest.filter((b) => b.count > 0).map((b) => clockText(b.start)).join(", ");
+
+  const rows = [
+    ["SUMMARY"],
+    ["Players", s.uniquePlayers],
+    ["Students", typeCount("student")],
+    ["Teachers", typeCount("teacher")],
+    ["Players who came back for another token", s.returning],
+    ["Tokens", s.tokens],
+    ["Games played", s.plays],
+    ["Games won", s.gameWins],
+    ["Games lost", s.gameLosses],
+    ["Tokens with both games won", s.outcomes.wonBoth],
+    ["Tokens with one game won", s.outcomes.wonOne],
+    ["Tokens with both games lost", s.outcomes.lostBoth],
+    ["Prizes picked", prizesPicked],
+    ["First token started", clockText(s.firstStart)],
+    ["Last token finished", clockText(s.lastFinish)],
+    ["Busiest half hour", busiest],
+    ["Average time per token", durationText(s.avgMinutes)],
+    ["Longest token", named(s.longest) ?? ""],
+    ["Quickest token", named(s.quickest) ?? ""],
+    ["Average wait for a game", durationText(s.avgWait)],
+    ["Longest wait", named(s.longestWait) ?? ""],
+    [],
+    ["GAMES"],
+    ["Game", "Times played", "Won", "Lost", "Win rate"],
+    ...s.perGame.map((g) => [g.name, g.plays, g.wins, g.plays - g.wins, percent(g.winRate)]),
+    [],
+    ["CLASSES"],
+    ["Class", "Players", "Tokens", "Games won", "Games lost", "Win rate", "Favourite game"],
+    ...s.classStats.map((c) => [c.cls, c.players, c.tokens, c.wins, c.plays - c.wins, percent(c.winRate), c.favourite.join(" / ")]),
+    ...s.typeStats.map((t) => [
+      t.type === "teacher" ? "All teachers" : "All students", t.players, t.tokens, t.wins, t.plays - t.wins,
+      percent(t.winRate), t.favourite.join(" / "),
+    ]),
+    [],
+    ["PRIZES"],
+    ["Prize", "Given", "Started with", "Left"],
+    ...s.rewards.map((r) => [r.name, r.count, r.stock ?? "", r.stock == null ? "" : r.left]),
+    [],
+    ["TOKENS STARTED PER HALF HOUR"],
+    ["From", "Tokens"],
+    ...s.slots.map((slot) => [clockText(slot.start), slot.count]),
+  ];
+  return rows.map((row) => row.map(csvField).join(",")).join("\r\n") + "\r\n";
+}
+
 // Checks a backup or stored copy, and returns it if every part makes sense.
 // Throws an Error with a readable message otherwise, so nothing half-loaded replaces good data.
 export function parseData(text) {

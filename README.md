@@ -63,6 +63,8 @@ browser, or using a private/incognito tab, **loses it**.
   to yourself on WhatsApp, email or Drive). The app reminds you after every 20 tokens.
 - **Settings → Setup → Export for a spreadsheet** gives a `.csv` with one row per token, for Google Sheets or
   Excel.
+- **Settings → Setup → Export the day's stats** gives a `.csv` of totals: players, tokens, games played, won
+  and lost, then tables per game, class and prize, and tokens started per half hour. Only finished tokens count.
 - **Settings → Setup → Restore from a backup** loads a `.json` backup back in, on this phone or another one.
 
 Never commit backup or CSV files to this repo: they contain children's names. `.gitignore` blocks

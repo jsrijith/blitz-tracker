@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   defaultData, checkGamePick, checkFinish, wonAny, resultsComplete, computeStats,
-  newId, classLabel, csvField, tokensToCsv, parseData, pairKey, givenCount, leftCount, parseStock, DEFAULT_TITLE,
+  newId, classLabel, csvField, tokensToCsv, statsToCsv, durationText, parseData, pairKey, givenCount, leftCount, parseStock, DEFAULT_TITLE,
 } from "../rules.js";
 
 function sample() {
@@ -112,6 +112,40 @@ test("CSV has a header and one row per finished token", () => {
   assert.ok(ravi.includes('"Mr ""Ravi"", Kumar",teacher'));
   assert.ok(ravi.includes("Game 3,lost,Game 1,won,yes,Keychain,Sticker"));
   assert.ok(ravi.endsWith(",15.0,,finished"), "no table times, so no wait");
+});
+
+test("times are in minutes and seconds, never hours", () => {
+  assert.equal(durationText(0.75), "45 seconds");
+  assert.equal(durationText(1 / 60), "1 second");
+  assert.equal(durationText(1.25), "1 minute 15 seconds");
+  assert.equal(durationText(2), "2 minutes");
+  assert.equal(durationText(75), "75 minutes");
+  assert.equal(durationText(null), "");
+});
+
+test("the stats CSV counts finished tokens only", () => {
+  const lines = statsToCsv(sample()).trimEnd().split("\r\n");
+  const row = (label) => lines.find((l) => l.startsWith(`${label},`));
+  assert.equal(row("Players"), "Players,3");
+  assert.equal(row("Students"), "Students,2");
+  assert.equal(row("Teachers"), "Teachers,1");
+  assert.equal(row("Tokens"), "Tokens,4", "the token still in play isn't counted");
+  assert.equal(row("Games played"), "Games played,8");
+  assert.equal(row("Games won"), "Games won,4");
+  assert.equal(row("Games lost"), "Games lost,4");
+  assert.equal(row("Prizes picked"), "Prizes picked,2");
+  assert.equal(row("First token started"), "First token started,09:00");
+  assert.equal(row("Last token finished"), "Last token finished,10:45");
+  assert.equal(row("Average time per token"), "Average time per token,15 minutes");
+  assert.equal(row("Quickest token"), "Quickest token,Asha (10 minutes)");
+  assert.equal(row("Game 1"), "Game 1,4,3,1,75%");
+  assert.equal(row("5B"), "5B,1,2,1,3,25%,Game 1 / Game 2", "ties for favourite are all listed");
+  assert.equal(row("All teachers"), "All teachers,1,1,1,1,50%,Game 1 / Game 3");
+  assert.equal(row("Pen"), "Pen,1,,", "no stock typed in, so nothing left to count");
+  assert.ok(lines.includes("09:30,0"), "quiet half hours are listed too");
+  for (const heading of ["SUMMARY", "GAMES", "CLASSES", "PRIZES", "TOKENS STARTED PER HALF HOUR"]) {
+    assert.ok(lines.includes(heading), heading);
+  }
 });
 
 test("a backup round-trips", () => {

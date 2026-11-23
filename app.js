@@ -1,6 +1,6 @@
 import {
   PLAYER_TYPES, RESULTS, newId, defaultData, checkGamePick, checkFinish, wonAny, resultsComplete,
-  openTokens, finishedTokens, computeStats, tokensToCsv, parseData, CLASS_KINDS, classLabel,
+  openTokens, finishedTokens, computeStats, tokensToCsv, statsToCsv, parseData, CLASS_KINDS, classLabel,
   leftTokens, markLeft, bringBack, closeStall, isLongGame, LONG_GAME_MINUTES,
   DEFAULT_TITLE, givenCount, leftCount, parseStock, SLOT_MINUTES, MIN_PLAYS_FOR_RATE,
   gameState, queue, playingNow, canGive, startToken, startGame, endGame, waitMinutes, checkChange, changeGame,
@@ -664,6 +664,7 @@ function setupHtml() {
       <p class="small muted" style="margin:0">Everything is kept only in this phone's browser. ${since ? `<b>${since} token${since === 1 ? "" : "s"} since the last backup.</b>` : "Backed up."}</p>
       <button class="btn primary block" data-action="backup">Back up (JSON file)</button>
       <button class="btn block" data-action="csv">Export for a spreadsheet (CSV)</button>
+      <button class="btn block" data-action="stats-csv">Export the day's stats (CSV)</button>
       <label class="btn block" for="restore">Restore from a backup…</label>
       <input type="file" id="restore" accept="application/json,.json" hidden>
     </div>
@@ -942,6 +943,10 @@ const actions = {
   csv: async () => {
     const stamp = new Date().toISOString().slice(0, 10);
     await shareFile(`game-stall-${stamp}.csv`, "text/csv", tokensToCsv(data));
+  },
+  "stats-csv": async () => {
+    const stamp = new Date().toISOString().slice(0, 10);
+    await shareFile(`game-stall-stats-${stamp}.csv`, "text/csv", statsToCsv(data));
   },
   "add-reward": () => {
     const name = prompt("Name of the new prize")?.trim();
