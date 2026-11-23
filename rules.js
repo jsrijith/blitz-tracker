@@ -273,6 +273,24 @@ export function pairKey(gameIdA, gameIdB) {
 
 export const SLOT_MINUTES = 30; // the busy-times chart counts tokens in half hours
 export const MIN_PLAYS_FOR_RATE = 3; // a game needs this many plays to be called hardest or easiest
+export const QUIET_MINUTES = 10; // a gap with no game played at least this long is a quiet spell
+export const QUICKEST_WIN_MIN_SECONDS = 60; // a win quicker than this was probably a mis-tap
+
+// A student's grade or year without the section: "Grade 5" for Grade 5B, "5" for an old class like 5B.
+// A class with no number at the start, like "KG", is its own grade.
+export function gradeLabel(p) {
+  if (!p?.cls) return "";
+  const grade = p.cls.match(/^\s*(\d+)/)?.[1] ?? p.cls.trim();
+  return p.clsKind ? `${p.clsKind.charAt(0).toUpperCase()}${p.clsKind.slice(1)} ${grade}` : grade;
+}
+
+// Grades in order: by kind, then by number, so Grade 3 comes before Grade 10.
+function gradeOrder(a, b) {
+  const split = (g) => [g.replace(/\d+$/, "").trim(), Number(g.match(/\d+$/)?.[0] ?? Infinity)];
+  const [ka, na] = split(a);
+  const [kb, nb] = split(b);
+  return ka.localeCompare(kb) || na - nb || a.localeCompare(b);
+}
 
 // Every item tied for the highest (or lowest) value.
 function leaders(items, valueOf, lowest = false) {
@@ -424,6 +442,105 @@ export function computeStats(data, now = new Date()) {
     .slice(0, 5);
   const returning = playing.filter((p) => tokensOf.get(p.id).length >= 2).length;
 
+  // Each game: how long a play takes, how busy it kept the stall, the wait before it, its best run ------
+  const ms = (a, b) => Date.parse(b) - Date.parse(a);
+  const isTimed = (g) => g.startedAt && g.endedAt && ms(g.startedAt, g.endedAt) >= 0;
+  const openMinutes = firstStart ? ms(firstStart, lastFinish) / 60000 : 0;
+  // The wait before a game: from joining the queue for the first game played, from the end of it for the second.
+  const waitsBefore = (t) => {
+    if (!t.games.every(isTimed)) return [];
+    const [a, b] = [...t.games].sort((x, y) => x.startedAt.localeCompare(y.startedAt));
+    return [
+      { gameId: a.gameId, minutes: Math.max(0, ms(t.startedAt, a.startedAt)) / 60000 },
+      { gameId: b.gameId, minutes: Math.max(0, ms(a.endedAt, b.startedAt)) / 60000 },
+    ];
+  };
+  const allWaits = done.flatMap(waitsBefore);
+  const average = (xs) => (xs.length ? xs.reduce((n, x) => n + x, 0) / xs.length : null);
+  // Plays in the order they ended, each with who played; a token finished by hand ends when it finished.
+  const playsInOrder = done
+    .flatMap((t) => t.games.map((g) => ({ ...g, playerId: t.playerId, endedAt: g.endedAt ?? t.finishedAt })))
+    .sort((a, b) => a.endedAt.localeCompare(b.endedAt));
+  for (const g of perGame) {
+    const timed = done.flatMap((t) => t.games.filter((x) => x.gameId === g.gameId && isTimed(x)));
+    const playMinutes = timed.map((x) => ms(x.startedAt, x.endedAt) / 60000);
+    g.avgPlayMinutes = average(playMinutes);
+    g.busyShare = timed.length && openMinutes > 0 ? Math.min(1, playMinutes.reduce((n, m) => n + m, 0) / openMinutes) : null;
+    g.avgWait = average(allWaits.filter((w) => w.gameId === g.gameId).map((w) => w.minutes));
+    let run = 0;
+    g.bestRun = 0;
+    for (const p of playsInOrder) {
+      if (p.gameId !== g.gameId) continue;
+      run = p.result === "lost" ? run + 1 : 0;
+      g.bestRun = Math.max(g.bestRun, run);
+    }
+  }
+  const withWaits = perGame.filter((g) => g.avgWait != null && allWaits.filter((w) => w.gameId === g.gameId).length >= MIN_PLAYS_FOR_RATE);
+  const longestQueue = leaders(withWaits, (g) => g.avgWait).filter((g) => g.avgWait >= 1);
+  const toughest = leaders(perGame, (g) => g.bestRun).filter((g) => g.bestRun >= 2);
+
+  // Most players waiting at once: a token waits from joining the queue to its first game, and between games.
+  // A token still waiting counts until `now`; one finished without starting its next game doesn't count.
+  const waitEvents = [];
+  const addWait = (from, to) => {
+    if (from && to && ms(from, to) > 0) waitEvents.push([Date.parse(from), 1], [Date.parse(to), -1]);
+  };
+  for (const t of data.tokens) {
+    const started = t.games.filter((g) => g.startedAt).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+    const stillOpen = !t.finishedAt && !t.leftAt;
+    const nowIso = now.toISOString();
+    addWait(t.startedAt, started[0]?.startedAt ?? (stillOpen ? nowIso : null));
+    if (started[0]?.endedAt) addWait(started[0].endedAt, started[1]?.startedAt ?? (stillOpen && !started[1] ? nowIso : null));
+  }
+  waitEvents.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  let waiting = 0;
+  let peakWaiting = { count: 0, at: null };
+  for (const [at, step] of waitEvents) {
+    waiting += step;
+    if (waiting > peakWaiting.count) peakWaiting = { count: waiting, at: new Date(at).toISOString() };
+  }
+
+  // Quiet spells: stretches of the day with no game being played.
+  const playSpans = data.tokens
+    .flatMap((t) => t.games.filter(isTimed))
+    .map((g) => [Date.parse(g.startedAt), Date.parse(g.endedAt)])
+    .sort((a, b) => a[0] - b[0]);
+  const quietSpells = [];
+  let busyUntil = null;
+  for (const [start, end] of playSpans) {
+    if (busyUntil != null && start - busyUntil >= QUIET_MINUTES * 60000) {
+      quietSpells.push({ from: new Date(busyUntil).toISOString(), to: new Date(start).toISOString(), minutes: (start - busyUntil) / 60000 });
+    }
+    busyUntil = Math.max(busyUntil ?? end, end);
+  }
+
+  // Quickest win: the shortest timed play that was won. Plays under a minute are probably a mis-tap.
+  const wins = done.flatMap((t) => t.games
+    .filter((g) => g.result === "won" && isTimed(g) && ms(g.startedAt, g.endedAt) >= QUICKEST_WIN_MIN_SECONDS * 1000)
+    .map((g) => ({ playerId: t.playerId, gameId: g.gameId, minutes: ms(g.startedAt, g.endedAt) / 60000 })));
+  const quickWin = leaders(wins, (w) => w.minutes, true)[0];
+  const quickestWin = quickWin && { name: playerById.get(quickWin.playerId)?.name ?? "?", game: gameName(quickWin.gameId), minutes: quickWin.minutes };
+
+  // Comebacks: lost the first game played in a token, then won the second. Needs the order, so timed tokens only.
+  const comebackTokens = done.filter((t) => {
+    if (!t.games.every((g) => g.endedAt)) return false;
+    const [a, b] = [...t.games].sort((x, y) => x.endedAt.localeCompare(y.endedAt));
+    return a.result === "lost" && b.result === "won";
+  });
+  const comebacks = sortedEntries(countBy(comebackTokens, (t) => t.playerId))
+    .map(([id, count]) => ({ name: playerById.get(id)?.name ?? "?", count }));
+
+  // Perfect record: two or more tokens, and every game won.
+  const perfect = playing
+    .filter((p) => tokensOf.get(p.id).length >= 2 && winsOf(p) === tokensOf.get(p.id).length * GAMES_PER_TOKEN)
+    .map((p) => ({ name: p.name, tokens: tokensOf.get(p.id).length, wins: winsOf(p) }))
+    .sort((a, b) => b.tokens - a.tokens || a.name.localeCompare(b.name));
+
+  // Grades: classes put together by grade or year, so 5A and 5B count as Grade 5.
+  const gradeStats = sortedEntries(countBy(playing.filter((p) => p.cls), gradeLabel))
+    .map(([grade]) => ({ grade, ...group(playing.filter((p) => p.cls && gradeLabel(p) === grade)) }))
+    .sort((a, b) => gradeOrder(a.grade, b.grade));
+
   // Checking the count -------------------------------------------------------
   const left = leftTokens(data);
   const count = {
@@ -473,6 +590,14 @@ export function computeStats(data, now = new Date()) {
     classStats,
     topPlayers,
     topWinners,
+    longestQueue,
+    toughest,
+    peakWaiting,
+    quietSpells,
+    quickestWin,
+    comebacks,
+    perfect,
+    gradeStats,
   };
 }
 
@@ -562,10 +687,19 @@ export function statsToCsv(data, now = new Date()) {
     ["Quickest token", named(s.quickest) ?? ""],
     ["Average wait for a game", durationText(s.avgWait)],
     ["Longest wait", named(s.longestWait) ?? ""],
+    ["Most players waiting at once", s.peakWaiting.count ? `${s.peakWaiting.count} at ${clockText(s.peakWaiting.at)}` : ""],
+    ["Longest queue", s.longestQueue.map((g) => `${g.name} (${durationText(g.avgWait)} average wait)`).join(", ")],
+    ["Toughest game", s.toughest.map((g) => `${g.name} (beat ${g.bestRun} players in a row)`).join(", ")],
+    ["Quickest win", s.quickestWin ? `${s.quickestWin.name}, ${s.quickestWin.game} (${durationText(s.quickestWin.minutes)})` : ""],
+    ["Perfect records", s.perfect.length],
+    ["Comeback tokens (lost the first game, won the second)", s.comebacks.reduce((n, c) => n + c.count, 0)],
     [],
     ["GAMES"],
-    ["Game", "Times played", "Won", "Lost", "Win rate"],
-    ...s.perGame.map((g) => [g.name, g.plays, g.wins, g.plays - g.wins, percent(g.winRate)]),
+    ["Game", "Times played", "Won", "Lost", "Win rate", "Average length", "Busy (share of the day)", "Average wait before it", "Most players beaten in a row"],
+    ...s.perGame.map((g) => [
+      g.name, g.plays, g.wins, g.plays - g.wins, percent(g.winRate),
+      durationText(g.avgPlayMinutes), percent(g.busyShare), durationText(g.avgWait), g.plays ? g.bestRun : "",
+    ]),
     [],
     ["CLASSES"],
     ["Class", "Players", "Tokens", "Games won", "Games lost", "Win rate", "Favourite game"],
@@ -575,6 +709,10 @@ export function statsToCsv(data, now = new Date()) {
       percent(t.winRate), t.favourite.join(" / "),
     ]),
     [],
+    ["GRADES (sections put together)"],
+    ["Grade", "Players", "Tokens", "Games won", "Games lost", "Win rate", "Favourite game"],
+    ...s.gradeStats.map((g) => [g.grade, g.players, g.tokens, g.wins, g.plays - g.wins, percent(g.winRate), g.favourite.join(" / ")]),
+    [],
     ["PRIZES"],
     ["Prize", "Given", "Started with", "Left"],
     ...s.rewards.map((r) => [r.name, r.count, r.stock ?? "", r.stock == null ? "" : r.left]),
@@ -582,6 +720,18 @@ export function statsToCsv(data, now = new Date()) {
     ["TOKENS STARTED PER HALF HOUR"],
     ["From", "Tokens"],
     ...s.slots.map((slot) => [clockText(slot.start), slot.count]),
+    [],
+    [`QUIET SPELLS (${QUIET_MINUTES} minutes or more with no game played)`],
+    ["From", "To", "Length"],
+    ...s.quietSpells.map((q) => [clockText(q.from), clockText(q.to), durationText(q.minutes)]),
+    [],
+    ["PERFECT RECORDS (two or more tokens, every game won)"],
+    ["Player", "Tokens", "Games won"],
+    ...s.perfect.map((p) => [p.name, p.tokens, p.wins]),
+    [],
+    ["COMEBACKS (lost the first game of a token, then won the second)"],
+    ["Player", "Tokens"],
+    ...s.comebacks.map((c) => [c.name, c.count]),
   ];
   return rows.map((row) => row.map(csvField).join(",")).join("\r\n") + "\r\n";
 }

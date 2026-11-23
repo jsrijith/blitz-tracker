@@ -2,7 +2,7 @@ import {
   PLAYER_TYPES, RESULTS, newId, defaultData, checkGamePick, checkFinish, wonAny, resultsComplete,
   openTokens, finishedTokens, computeStats, tokensToCsv, statsToCsv, parseData, CLASS_KINDS, classLabel,
   leftTokens, markLeft, bringBack, closeStall, isLongGame, LONG_GAME_MINUTES,
-  DEFAULT_TITLE, givenCount, leftCount, parseStock, SLOT_MINUTES, MIN_PLAYS_FOR_RATE,
+  DEFAULT_TITLE, givenCount, leftCount, parseStock, SLOT_MINUTES, MIN_PLAYS_FOR_RATE, QUIET_MINUTES,
   gameState, queue, playingNow, canGive, startToken, startGame, endGame, waitMinutes, checkChange, changeGame,
 } from "./rules.js";
 import { load, save, tokensSinceBackup, askPersistent, shareFile } from "./store.js";
@@ -515,6 +515,7 @@ const hhmm = (minutes) => `${String(Math.floor(minutes / 60)).padStart(2, "0")}:
 const slotLabel = (slot) => `${hhmm(slot.start)}–${hhmm(slot.start + SLOT_MINUTES)}`;
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const pct = (x) => (x == null ? "–" : `${Math.round(x * 100)}%`);
+const mins = (m) => (m == null ? "–" : m < 1 ? "under 1 min" : `${Math.round(m)} min`);
 
 // "A, B and C", or "A, B and 3 more" for long ties.
 function nameList(names, max = 3) {
@@ -539,6 +540,12 @@ function highlightsHtml(s) {
   if (s.topPrize.length) add("Favourite prize", esc(nameList(s.topPrize.map((r) => r.name))), `picked ${s.topPrize[0].count}×`);
   if (s.classStats.length > 1) add("Most active class", esc(s.classStats[0].cls), plural(s.classStats[0].tokens, "token"));
   if (s.topWinners.length) add("Top winner", esc(s.topWinners[0].name), `${plural(s.topWinners[0].wins, "win")} in ${s.topWinners[0].plays} games`);
+  if (s.longestQueue.length) add("Longest queue", esc(nameList(s.longestQueue.map((x) => x.name))), `${mins(s.longestQueue[0].avgWait)} wait, average`);
+  if (s.peakWaiting.count > 1) add("Most waiting at once", `${s.peakWaiting.count} waiting`, `at ${time(s.peakWaiting.at)}`);
+  if (s.toughest.length) add("Toughest game", esc(nameList(s.toughest.map((x) => x.name))), `beat ${s.toughest[0].bestRun} players in a row`);
+  if (s.quickestWin) add("Quickest win", esc(s.quickestWin.name), `${esc(s.quickestWin.game)} in ${mins(s.quickestWin.minutes)}`);
+  if (s.perfect.length) add("Perfect record", esc(nameList(s.perfect.map((p) => p.name))), "won every game");
+  if (s.comebacks.length) add("Comebacks", plural(s.comebacks.reduce((n, c) => n + c.count, 0), "token"), "lost the first game, won the second");
   if (s.longestWait && s.longestWait.minutes >= 1) add("Longest wait", esc(s.longestWait.name), `${Math.round(s.longestWait.minutes)} min`);
   if (s.longest && s.tokens > 1) add("Longest token", esc(s.longest.name), `${Math.round(s.longest.minutes)} min`);
   return rows.length ? `<div class="card highlights">${rows.join("")}</div>` : "";
@@ -617,6 +624,15 @@ function statsHtml() {
     <div class="card">${barsHtml(s.perGame.filter((g) => g.plays).sort((a, b) => b.winRate - a.winRate).map((g) => ({ label: g.name, value: g.winRate, text: `${pct(g.winRate)} of ${g.plays}` })))}
       <p class="small muted" style="margin:10px 0 0">Share of plays the player won. Hardest and easiest need ${MIN_PLAYS_FOR_RATE}+ plays.</p></div>
 
+    ${s.perGame.some((g) => g.avgPlayMinutes != null) ? `<h2>Game times and queues</h2>
+    <div class="card">${tableHtml(["Game", "Length", "Busy", "Wait", "Beat in a row"],
+      s.perGame.filter((g) => g.plays).map((g) => [esc(g.name), mins(g.avgPlayMinutes), pct(g.busyShare), mins(g.avgWait), g.bestRun]))}
+      <p class="small muted" style="margin:10px 0 0">Length: average time a play took. Busy: share of the day the game was being played. Wait: average wait before a player started it. Beat in a row: most players in a row who lost to it.</p></div>` : ""}
+
+    ${s.quietSpells.length ? `<h2>Quiet spells</h2>
+    <div class="card">${tableHtml(["From", "To", "No games for"], s.quietSpells.map((q) => [time(q.from), time(q.to), mins(q.minutes)]))}
+      <p class="small muted" style="margin:10px 0 0">Times of ${QUIET_MINUTES} minutes or more when no game was being played.</p></div>` : ""}
+
     <h2>Students and teachers</h2>
     <div class="card">${tableHtml(["", "Players", "Tokens", "Won", "Favourite"],
       s.typeStats.map((t) => [cap(t.type) + "s", t.players, t.tokens, pct(t.winRate), esc(nameList(t.favourite, 2))]))}</div>
@@ -624,7 +640,12 @@ function statsHtml() {
     ${s.classStats.length ? `<h2>Classes</h2>
     <div class="card">${tableHtml(["Class", "Players", "Tokens", "Won"], s.classStats.map((c) => [esc(c.cls), c.players, c.tokens, pct(c.winRate)]))}</div>` : ""}
 
-    <h2>Favourite pairs</h2>
+${s.gradeStats.length ? `<h2>Grades</h2>
+    <div class="card">${tableHtml(["Grade", "Players", "Tokens", "Won", "Favourite"],
+      s.gradeStats.map((g) => [esc(g.grade), g.players, g.tokens, pct(g.winRate), esc(nameList(g.favourite, 2))]))}
+      <p class="small muted" style="margin:10px 0 0">Sections put together, so 5A and 5B count as Grade 5.</p></div>` : ""}
+
+        <h2>Favourite pairs</h2>
     <div class="card">${barsHtml(s.pairs.slice(0, 8).map((p) => ({ label: p.names.join(" + "), value: p.count })))}</div>
 
     <h2>Prizes given</h2>
@@ -634,7 +655,15 @@ function statsHtml() {
     <h2>Most wins</h2>
     <div class="card">${barsHtml(s.topWinners.map((p) => ({ label: p.name, value: p.wins, text: `${p.wins} of ${p.plays}` })))}</div>
 
-    <h2>Most tokens</h2>
+${s.perfect.length ? `<h2>Perfect record</h2>
+    <div class="card">${tableHtml(["Player", "Tokens", "Games won"], s.perfect.map((p) => [esc(p.name), p.tokens, p.wins]))}
+      <p class="small muted" style="margin:10px 0 0">Two or more tokens, and every game won.</p></div>` : ""}
+
+    ${s.comebacks.length ? `<h2>Comebacks</h2>
+    <div class="card">${barsHtml(s.comebacks.map((c) => ({ label: c.name, value: c.count })))}
+      <p class="small muted" style="margin:10px 0 0">Lost the first game of a token, then won the second.</p></div>` : ""}
+
+        <h2>Most tokens</h2>
     <div class="card">${barsHtml(s.topPlayers.map((p) => ({ label: p.name, value: p.tokens })))}</div>
   `;
 }

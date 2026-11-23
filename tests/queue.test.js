@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import {
   defaultData, gameState, queue, playingNow, canGive, startToken, startGame, endGame, isBusy, waitMinutes,
   checkChange, changeGame, markLeft, bringBack, closeStall, leftTokens, isLongGame, checkGamePick,
-  computeStats, tokensToCsv, parseData,
+  computeStats, tokensToCsv, parseData, statsToCsv, gradeLabel,
 } from "../rules.js";
 
 // Minutes after 09:00 as an ISO time, so tests read as a timeline.
@@ -261,4 +261,91 @@ test("settings saved before keep-awake and the token count still load", () => {
   const back = parseData(JSON.stringify(d));
   assert.equal(back.keepAwake, true);
   assert.equal(back.tokensCollected, null);
+});
+
+// A short stall day: three students queue for Game 1, a quiet spell, then a teacher wins everything.
+function playedDay() {
+  const d = stall();
+  const cls = { Alice: ["5A", "grade"], Bob: ["5B", "grade"], Carol: ["3A", "grade"] };
+  for (const p of d.players) {
+    if (cls[p.id]) [p.cls, p.clsKind] = cls[p.id];
+    else p.type = "teacher";
+  }
+  const play = (player, gameIds, joined, games, finished) => {
+    const t = startToken(d, player, gameIds, at(joined)).token;
+    for (const [index, start, end, result] of games) {
+      startGame(t, index, at(start));
+      endGame(t, index, result, at(end));
+    }
+    t.finishedAt = at(finished);
+    return t;
+  };
+  play("Alice", ["g1", "g2"], 0, [[0, 0, 5, "lost"], [1, 5, 8, "won"]], 8);
+  play("Bob", ["g1", "g3"], 1, [[0, 5, 10, "lost"], [1, 10, 12, "lost"]], 12);
+  play("Carol", ["g1", "g2"], 2, [[0, 10, 15, "lost"], [1, 15, 20, "lost"]], 20);
+  play("Dev", ["g4", "g5"], 40, [[0, 40, 45, "won"], [1, 45, 47, "won"]], 47);
+  play("Dev", ["g6", "g7"], 50, [[0, 50, 55, "won"], [1, 55, 60, "won"]], 60);
+  return d;
+}
+
+test("game length, busy share, wait before each game and the best losing run", () => {
+  const s = computeStats(playedDay(), new Date(at(90)));
+  const g1 = s.perGame.find((g) => g.gameId === "g1");
+  assert.equal(g1.avgPlayMinutes, 5);
+  assert.equal(g1.busyShare, 15 / 60, "15 minutes of play in an hour open");
+  assert.equal(g1.avgWait, 4, "Alice 0, Bob 4, Carol 8");
+  assert.equal(g1.bestRun, 3);
+  assert.deepEqual(s.longestQueue.map((g) => g.gameId), ["g1"]);
+  assert.deepEqual(s.toughest.map((g) => g.gameId), ["g1"]);
+  const g8 = s.perGame.find((g) => g.gameId === "g8");
+  assert.deepEqual([g8.avgPlayMinutes, g8.busyShare, g8.avgWait, g8.bestRun], [null, null, null, 0]);
+});
+
+test("most waiting at once, quiet spells, quickest win, comebacks, perfect records, grades", () => {
+  const s = computeStats(playedDay(), new Date(at(90)));
+  assert.deepEqual(s.peakWaiting, { count: 2, at: at(2) });
+  assert.deepEqual(s.quietSpells, [{ from: at(20), to: at(40), minutes: 20 }]);
+  assert.deepEqual(s.quickestWin, { name: "Dev", game: "Game 5", minutes: 2 });
+  assert.deepEqual(s.comebacks, [{ name: "Alice", count: 1 }]);
+  assert.deepEqual(s.perfect, [{ name: "Dev", tokens: 2, wins: 4 }]);
+  assert.deepEqual(s.gradeStats.map((g) => [g.grade, g.players, g.tokens]), [["Grade 3", 1, 1], ["Grade 5", 2, 2]]);
+});
+
+test("a player still in the queue counts as waiting now; a win under a minute is ignored", () => {
+  const d = playedDay();
+  startToken(d, "Bob", ["g2", "g3"], at(85));
+  startToken(d, "Carol", ["g2", "g4"], at(86));
+  startToken(d, "Alice", ["g2", "g5"], at(87));
+  const quick = startToken(d, "Dev", ["g8", "g6"], at(70)).token;
+  startGame(quick, 0, at(70));
+  endGame(quick, 0, "won", new Date(Date.parse(at(70)) + 30000).toISOString());
+  quick.finishedAt = at(71);
+  const s = computeStats(d, new Date(at(90)));
+  assert.deepEqual(s.peakWaiting, { count: 3, at: at(87) });
+  assert.equal(s.quickestWin.minutes, 2, "the 30-second win is left out");
+});
+
+test("grades put sections together, and keep grade and year apart", () => {
+  assert.equal(gradeLabel({ cls: "5B", clsKind: "grade" }), "Grade 5");
+  assert.equal(gradeLabel({ cls: "12 Science", clsKind: "year" }), "Year 12");
+  assert.equal(gradeLabel({ cls: "5B" }), "5");
+  assert.equal(gradeLabel({ cls: "KG", clsKind: "grade" }), "Grade KG");
+  assert.equal(gradeLabel({ cls: "" }), "");
+});
+
+test("the stats CSV has the new tables, with times in minutes and seconds", () => {
+  const lines = statsToCsv(playedDay(), new Date(at(90))).trimEnd().split("\r\n");
+  const row = (label) => lines.find((l) => l.startsWith(`${label},`));
+  assert.equal(row("Game 1"), "Game 1,3,0,3,0%,5 minutes,25%,4 minutes,3");
+  assert.equal(row("Most players waiting at once"), "Most players waiting at once,2 at 09:02");
+  assert.equal(row("Longest queue"), "Longest queue,Game 1 (4 minutes average wait)");
+  assert.equal(row("Toughest game"), "Toughest game,Game 1 (beat 3 players in a row)");
+  assert.equal(row("Quickest win"), "Quickest win,\"Dev, Game 5 (2 minutes)\"");
+  assert.equal(row("Grade 5"), "Grade 5,2,2,1,3,25%,Game 1");
+  assert.equal(row("09:20"), "09:20,09:40,20 minutes");
+  assert.equal(row("Dev"), "Dev,2,4");
+  assert.equal(row("Alice"), "Alice,1");
+  for (const heading of ["GRADES (sections put together)", "PERFECT RECORDS (two or more tokens, every game won)"]) {
+    assert.ok(lines.some((l) => l.replace(/"/g, "") === heading), heading);
+  }
 });

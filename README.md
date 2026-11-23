@@ -64,8 +64,9 @@ browser, or using a private/incognito tab, **loses it**.
   it, and every export below works the same way. The app reminds you after every 20 tokens.
 - **Settings → Setup → Export for a spreadsheet** gives a `.csv` with one row per token, for Google Sheets or
   Excel.
-- **Settings → Setup → Export the day's stats** gives a `.csv` of totals: players, tokens, games played, won
-  and lost, then tables per game, class and prize, and tokens started per half hour. Only finished tokens count.
+- **Settings → Setup → Export the day's stats** gives a `.csv` of what Settings → Stats shows: totals, then
+  tables per game (with play length, how busy it was and the wait before it), class, grade and prize, tokens
+  started per half hour, quiet spells, perfect records and comebacks. Only finished tokens count.
 - **Settings → Setup → Restore from a backup** loads a `.json` backup back in, on this phone or another one.
 
 Never commit backup or CSV files to this repo: they contain children's names. `.gitignore` blocks

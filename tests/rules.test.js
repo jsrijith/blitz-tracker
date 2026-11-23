@@ -138,7 +138,7 @@ test("the stats CSV counts finished tokens only", () => {
   assert.equal(row("Last token finished"), "Last token finished,10:45");
   assert.equal(row("Average time per token"), "Average time per token,15 minutes");
   assert.equal(row("Quickest token"), "Quickest token,Asha (10 minutes)");
-  assert.equal(row("Game 1"), "Game 1,4,3,1,75%");
+  assert.equal(row("Game 1"), "Game 1,4,3,1,75%,,,,1", "no game times, so no length, busy or wait");
   assert.equal(row("5B"), "5B,1,2,1,3,25%,Game 1 / Game 2", "ties for favourite are all listed");
   assert.equal(row("All teachers"), "All teachers,1,1,1,1,50%,Game 1 / Game 3");
   assert.equal(row("Pen"), "Pen,1,,", "no stock typed in, so nothing left to count");
