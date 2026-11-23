@@ -60,7 +60,8 @@ Everything is kept in this phone's browser. Nothing is sent anywhere. That also 
 browser, or using a private/incognito tab, **loses it**.
 
 - **Settings → Setup → Back up** saves a `.json` file, through the share sheet where the phone has one (send it
-  to yourself on WhatsApp, email or Drive). The app reminds you after every 20 tokens.
+  to yourself on WhatsApp, email or Drive). On a laptop or Chromebook, Chrome and Edge ask where to save
+  it, and every export below works the same way. The app reminds you after every 20 tokens.
 - **Settings → Setup → Export for a spreadsheet** gives a `.csv` with one row per token, for Google Sheets or
   Excel.
 - **Settings → Setup → Export the day's stats** gives a `.csv` of totals: players, tokens, games played, won

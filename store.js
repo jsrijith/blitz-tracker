@@ -46,9 +46,26 @@ export async function askPersistent() {
   return false;
 }
 
-// Hands a file to the phone's share sheet where it can, or downloads it.
+// Saves a file. A computer whose browser can (Chrome or Edge on Windows, Mac, Linux, ChromeOS) asks where
+// to save it; a phone hands it to the share sheet; anything else downloads it.
 export async function shareFile(name, type, text) {
   const file = new File([text], name, { type });
+  if (window.showSaveFilePicker) {
+    let handle;
+    try {
+      const ext = name.slice(name.lastIndexOf("."));
+      handle = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: name, accept: { [type]: [ext] } }] });
+    } catch (err) {
+      if (err.name === "AbortError") return "cancelled";
+      handle = null; // blocked, say inside a frame: fall through to the share sheet or a download
+    }
+    if (handle) {
+      const out = await handle.createWritable();
+      await out.write(file);
+      await out.close();
+      return "saved";
+    }
+  }
   if (navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ files: [file], title: name });
