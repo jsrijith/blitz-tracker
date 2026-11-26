@@ -2,6 +2,7 @@ import {
   PLAYER_TYPES, RESULTS, newId, defaultData, checkGamePick, checkFinish, wonAny, resultsComplete,
   openTokens, finishedTokens, computeStats, tokensToCsv, statsToCsv, parseData, CLASS_KINDS, classLabel,
   leftTokens, markLeft, bringBack, closeStall, isLongGame, LONG_GAME_MINUTES,
+  parseLimit, secondsLeft, timesUp, countdownText, SOON_SECONDS,
   DEFAULT_TITLE, givenCount, leftCount, parseStock, SLOT_MINUTES, MIN_PLAYS_FOR_RATE, QUIET_MINUTES,
   gameState, queue, playingNow, canGive, startToken, startGame, endGame, waitMinutes, checkChange, changeGame,
 } from "./rules.js";
@@ -56,6 +57,17 @@ function stockLine(r) {
 }
 const tokenCount = (playerId) => data.tokens.filter((t) => t.playerId === playerId).length;
 const minutesSince = (iso) => Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+
+// A timed game's clock: "ok", "soon" in its last minute, or "over" once time's up.
+const timerPhase = (left) => (left <= 0 ? "over" : left <= SOON_SECONDS ? "soon" : "ok");
+function timerText(left, short) {
+  if (left > 0) return `${countdownText(left)} left`;
+  return short ? "Time's up" : `Time's up · ${countdownText(left)} over`;
+}
+// The countdown for game i of a token. The tick below rewrites its text every second.
+function timerHtml(t, i, left, short) {
+  return `<span data-timer="${t.id}" data-i="${i}"${short ? " data-short" : ""}>${timerText(left, short)}</span>`;
+}
 
 function who(p) {
   if (!p) return "Unknown";
@@ -117,6 +129,11 @@ function renderBanner() {
     return;
   }
   const parts = [];
+  const over = timesUp(data, Date.now());
+  if (over.length) {
+    const names = over.map((x) => `<b>${esc(player(x.token.playerId)?.name)}</b> on ${esc(game(x.token.games[x.index].gameId)?.name)}`);
+    parts.push(`<span class="banner-line timeup"><span>⏰ Time's up: ${names.join(", ")}</span>${ui.tab === "play" && !ui.editing && !ui.changing ? "" : '<button class="btn" data-tab="play">Show</button>'}</span>`);
+  }
   const low = data.rewards.filter(isLow);
   if (low.length) {
     parts.push(`<span>Running low: ${low.map((r) => `<b>${esc(r.name)}</b> ${leftText(r)}`).join(", ")}</span>`);
@@ -124,7 +141,7 @@ function renderBanner() {
   if (since >= BACKUP_NAG_EVERY) {
     parts.push(`<span class="banner-line"><span>${since} tokens since the last backup.</span><button class="btn" data-action="backup">Back up</button></span>`);
   }
-  el.className = "banner";
+  el.className = over.length ? "banner timeup" : "banner";
   el.innerHTML = parts.join("");
   el.hidden = parts.length === 0;
 }
@@ -311,6 +328,19 @@ function playHtml() {
     ${playing.map((t) => {
       const i = t.games.findIndex((g) => g.startedAt && !g.result);
       const g = t.games[i];
+      const left = secondsLeft(data, g, Date.now());
+      if (left != null) {
+        const phase = timerPhase(left);
+        return `<div class="card play-card ${phase === "over" ? "long" : phase === "soon" ? "soon" : ""}">
+        <div class="head"><span class="game-name">${esc(game(g.gameId)?.name)}</span>
+          <span class="small ${phase === "over" ? "long-text" : phase === "soon" ? "soon-text" : "muted"}">${timerHtml(t, i, left)}</span></div>
+        ${phase === "over" ? `<div class="long-note">Time's up. Ask them to stop, then tap Won or Lost.</div>` : ""}
+        <div>${nameBtn(t)} <span class="small muted">${who(player(t.playerId))}</span></div>
+        <div class="choices">
+          ${RESULTS.map((r) => `<button class="choice ${r}" data-action="end-game" data-id="${t.id}" data-i="${i}" data-r="${r}">${cap(r)}</button>`).join("")}
+        </div>
+      </div>`;
+      }
       const long = isLongGame(g, Date.now());
       return `<div class="card play-card ${long ? "long" : ""}">
         <div class="head"><span class="game-name">${esc(game(g.gameId)?.name)}</span>
@@ -331,7 +361,10 @@ function allGamesHtml() {
   const rows = data.games.map((g, n) => {
     const s = gameState(data, g.id);
     const on = s.playing && s.playing.token.games[s.playing.index];
-    const status = s.playing
+    const left = on ? secondsLeft(data, on, Date.now()) : null;
+    const status = s.playing && left != null
+      ? `<span class="pill ${left <= 0 ? "long" : "in-use"}">${nameBtn(s.playing.token)} · ${timerHtml(s.playing.token, s.playing.index, left, true)}</span>`
+      : s.playing
       ? `<span class="pill ${isLongGame(on, Date.now()) ? "long" : "in-use"}">${nameBtn(s.playing.token)} · ${minutesSince(on.startedAt)} min</span>`
       : g.off ? `<span class="pill">Not available</span>` : `<span class="pill free">Free</span>`;
     const want = s.wanted.length ? `<span class="small muted">${s.wanted.length} in queue</span>` : "";
@@ -701,8 +734,10 @@ function setupHtml() {
     <h2>Games</h2>
     <div class="card">
       <p class="small muted" style="margin:0 0 12px">Broken or missing pieces? Mark a game Off: it can't be picked or given out until it's back On.</p>
+      <p class="small muted" style="margin:0 0 12px"><b>Min</b> is the game's time limit, counted from when it's given out. When it runs out, the phone buzzes and the top of the screen says so. Leave it blank for a game with no limit.</p>
       ${data.games.map((g, i) => `<div class="edit-row"><span class="tag">${i + 1}</span>
         <input type="text" data-edit="game" data-id="${g.id}" value="${esc(g.name)}" aria-label="Game ${i + 1} name">
+        <input type="text" class="limit" data-edit="game-limit" data-id="${g.id}" value="${g.limit ?? ""}" inputmode="numeric" pattern="[0-9]*" placeholder="–" aria-label="${esc(g.name)}: time limit in minutes"><span class="tag">min</span>
         <button class="btn kind-btn ${g.off ? "off" : ""}" data-action="toggle-game-off" data-id="${g.id}" aria-pressed="${!g.off}" aria-label="${esc(g.name)} available">${g.off ? "Off" : "On"}</button></div>`).join("")}
     </div>
 
@@ -1099,6 +1134,21 @@ document.addEventListener("change", async (e) => {
     commit();
     return;
   }
+  if (kind === "game-limit") {
+    const g = game(el.dataset.id);
+    const limit = parseLimit(el.value);
+    if (limit === undefined) {
+      el.value = g.limit ?? "";
+      toast("Type the minutes, like 5, or leave it blank for no limit.");
+      return;
+    }
+    if (limit === null) delete g.limit;
+    else g.limit = limit;
+    el.value = limit ?? "";
+    saveFailed = !save(data);
+    renderBanner();
+    return;
+  }
   if (kind === "reward-stock") {
     const r = reward(el.dataset.id);
     const stock = parseStock(el.value);
@@ -1135,6 +1185,37 @@ document.addEventListener("change", async (e) => {
 setInterval(() => {
   if (["play", "queue"].includes(ui.tab) && !ui.editing && !ui.changing) render();
 }, 30000);
+
+// Time limits: every second, rewrite the countdowns on screen. When a game's clock changes phase
+// (last minute, time's up), redraw so its card and the top line change colour. A game buzzes the
+// phone once, the first time this phone sees its time is up (vibration works on Android, not iPhone).
+const buzzed = new Set();
+let lastPhases = "";
+function tickTimers() {
+  const now = Date.now();
+  let fresh = false;
+  for (const x of timesUp(data, now)) {
+    const key = `${x.token.id}:${x.index}:${x.token.games[x.index].startedAt}`;
+    if (!buzzed.has(key)) { buzzed.add(key); fresh = true; }
+  }
+  if (fresh) navigator.vibrate?.([400, 200, 400, 200, 400]);
+  const phases = playingNow(data).map((t) => {
+    const i = t.games.findIndex((g) => g.startedAt && !g.result);
+    const left = secondsLeft(data, t.games[i], now);
+    return left == null ? "" : `${t.id}:${i}:${timerPhase(left)}`;
+  }).join(",");
+  if (phases !== lastPhases) {
+    lastPhases = phases;
+    if (ui.tab === "play" && !ui.editing && !ui.changing) render();
+    else renderBanner();
+  }
+  document.querySelectorAll("[data-timer]").forEach((el) => {
+    const t = data.tokens.find((x) => x.id === el.dataset.timer);
+    const left = t && secondsLeft(data, t.games[Number(el.dataset.i)], now);
+    if (left != null) el.textContent = timerText(left, el.hasAttribute("data-short"));
+  });
+}
+setInterval(tickTimers, 1000);
 
 // Keep the screen on while the app is open (Setup → Screen). The browser lets go of this whenever
 // the app is hidden, so it's asked for again each time the app comes back.

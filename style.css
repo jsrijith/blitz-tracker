@@ -295,6 +295,12 @@ label.field { display: block; margin: 12px 0 6px; font-weight: 600; }
 .long-text { color: var(--danger); font-weight: 700; }
 .long-note { color: var(--danger); font-weight: 600; font-size: 14px; margin: 2px 0 6px; }
 .pill.long { background: var(--lost-soft); border-color: var(--danger); color: var(--danger); font-weight: 600; }
+/* Time limits: amber in the last minute, red (like a long game) once time's up */
+.play-card.soon { border-color: var(--warn-ink); background: var(--warn-soft); }
+.soon-text { color: var(--warn-ink); font-weight: 700; }
+[data-timer] { font-variant-numeric: tabular-nums; }
+.edit-row input.limit { flex: 0 0 3.5em; text-align: center; }
+.banner.timeup { background: var(--lost-soft); color: var(--danger); border-color: var(--danger); font-weight: 600; }
 .kind-btn.off { color: var(--danger); border-color: var(--danger); }
 .count-ok { margin: 10px 0 0; color: var(--won); font-weight: 700; }
 .count-off { margin: 10px 0 0; color: var(--danger); font-weight: 600; }

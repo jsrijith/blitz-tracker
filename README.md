@@ -19,7 +19,8 @@ works without internet.
    how many of each prize you're starting with. The app then counts down what's left, shows it on
    the prize buttons, and warns at the top when something gets down to 3. Leave a quantity blank to
    not count that prize. If you restock, add the new ones to the starting number. A game with
-   broken or missing pieces can be switched **Off** so it isn't picked or given out. **Keep the
+   broken or missing pieces can be switched **Off** so it isn't picked or given out. Beside each game,
+   **min** is its time limit: type 5 for a 5 minute game, or leave it blank for a game with no limit. **Keep the
    screen on** (on by default) stops the phone's screen switching off while the app is open.
 2. **New token**: when someone hands over a token, type their name. Tap them if they've played
    before, or add them as a new player (student or teacher; for a student, tap Grade or Year and type it,
@@ -33,7 +34,11 @@ works without internet.
    Rather not wait? Tap **Change** next to a game to swap it for another one. They keep their
    place in the queue. Only a game they haven't started can be changed.
 4. **Playing**: who is on which game. When a player says they're done, tap **Won** or **Lost**.
-   A game on for over 20 minutes turns red: check the table, in case a result was forgotten.
+   A game with a time limit counts down from when you tapped Give, turns amber in its last minute,
+   and turns red at **Time's up**. Then the phone buzzes (Android only), and a red line at the top of
+   every tab says who is over time, until you tap Won or Lost. The app has to be open for this, so
+   keep the screen on. A game with no limit that's on for over 20 minutes turns red instead: check
+   the table, in case a result was forgotten.
    **All games** at the bottom shows every game: free, or who is on it, and how many in the queue
    want it.
    After their first game they go back to the queue, in the same place, for their other game.

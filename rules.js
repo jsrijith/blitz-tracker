@@ -7,6 +7,8 @@ export const PLAYER_TYPES = ["student", "teacher"];
 export const RESULTS = ["won", "lost"];
 export const CLASS_KINDS = ["grade", "year"];
 export const LONG_GAME_MINUTES = 20; // a game on longer than this may have been forgotten
+export const MAX_LIMIT_MINUTES = 120; // the longest time limit a game can have
+export const SOON_SECONDS = 60; // a timed game's last minute is shown as nearly up
 export const LEFT_REASONS = ["left", "closed"]; // the player walked off, or the stall closed first // a student's class is a grade or a year, like Grade 5B
 
 // "Grade 5B", "Year 5B", or just "5B" for a student saved before grade and year existed.
@@ -122,6 +124,43 @@ export function closeStall(data, now) {
 // True when a game has been on longer than LONG_GAME_MINUTES, so the stall should check on it.
 export function isLongGame(g, now) {
   return g.startedAt != null && g.result == null && (now - Date.parse(g.startedAt)) / 60000 > LONG_GAME_MINUTES;
+}
+
+// ---- Time limits ----------------------------------------------------------
+// A game can have a time limit, set in Setup. Its clock starts when the game is given out.
+
+// A time limit typed in Setup: null when blank (no limit), whole minutes from 1 to
+// MAX_LIMIT_MINUTES, or undefined when it isn't one.
+export function parseLimit(text) {
+  const s = String(text ?? "").trim();
+  if (s === "") return null;
+  if (!/^\d{1,3}$/.test(s)) return undefined;
+  const n = Number(s);
+  return n >= 1 && n <= MAX_LIMIT_MINUTES ? n : undefined;
+}
+
+// Seconds left on a game being played: 0 or less once time's up, null if its game has no limit.
+export function secondsLeft(data, g, now) {
+  const limit = data.games.find((x) => x.id === g.gameId)?.limit;
+  if (!limit || g.startedAt == null || g.result != null) return null;
+  return limit * 60 - Math.floor((now - Date.parse(g.startedAt)) / 1000);
+}
+
+// Games being played whose time is up, the one furthest over first.
+export function timesUp(data, now) {
+  return playingNow(data)
+    .map((token) => {
+      const index = token.games.findIndex(isPlaying);
+      return { token, index, left: secondsLeft(data, token.games[index], now) };
+    })
+    .filter((x) => x.left != null && x.left <= 0)
+    .sort((a, b) => a.left - b.left);
+}
+
+// 192 seconds as "3:12". A negative number (time over) is shown the same way.
+export function countdownText(seconds) {
+  const s = Math.abs(seconds);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 export function finishedTokens(data) {
@@ -758,6 +797,8 @@ export function parseData(text) {
   }
   if (!d.games.every((g) => isStr(g.id) && isStr(g.name))) fail("a game has no name");
   if (!d.games.every((g) => g.off === undefined || typeof g.off === "boolean")) fail("a game's availability is broken");
+  const okLimit = (v) => v == null || (Number.isInteger(v) && v >= 1 && v <= MAX_LIMIT_MINUTES);
+  if (!d.games.every((g) => okLimit(g.limit))) fail("a game's time limit is broken");
   if (!d.rewards.every((r) => isStr(r.id) && isStr(r.name) && typeof r.everyone === "boolean")) fail("a prize is broken");
   for (const r of d.rewards) {
     if (r.stock === undefined) r.stock = null; // saved before quantities existed

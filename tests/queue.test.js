@@ -6,6 +6,7 @@ import {
   defaultData, gameState, queue, playingNow, canGive, startToken, startGame, endGame, isBusy, waitMinutes,
   checkChange, changeGame, markLeft, bringBack, closeStall, leftTokens, isLongGame, checkGamePick,
   computeStats, tokensToCsv, parseData, statsToCsv, gradeLabel,
+  parseLimit, secondsLeft, timesUp, countdownText,
 } from "../rules.js";
 
 // Minutes after 09:00 as an ISO time, so tests read as a timeline.
@@ -348,4 +349,63 @@ test("the stats CSV has the new tables, with times in minutes and seconds", () =
   for (const heading of ["GRADES (sections put together)", "PERFECT RECORDS (two or more tokens, every game won)"]) {
     assert.ok(lines.some((l) => l.replace(/"/g, "") === heading), heading);
   }
+});
+
+test("a time limit is typed as whole minutes, or left blank for none", () => {
+  assert.equal(parseLimit(""), null);
+  assert.equal(parseLimit("  "), null);
+  assert.equal(parseLimit("5"), 5);
+  assert.equal(parseLimit(" 12 "), 12);
+  assert.equal(parseLimit("120"), 120);
+  for (const bad of ["0", "121", "2.5", "-3", "five", "1e2"]) assert.equal(parseLimit(bad), undefined, bad);
+});
+
+test("a timed game counts down from when it's given out, and is flagged once time's up", () => {
+  const d = stall();
+  d.games[0].limit = 5;
+  const a = startToken(d, "Alice", ["g1", "g2"], at(0)).token;
+  const b = startToken(d, "Bob", ["g2", "g3"], at(0)).token;
+  startGame(a, 0, at(1)); // Alice on Game 1, which has a 5 minute limit
+  startGame(b, 0, at(1)); // Bob on Game 2, no limit
+  const g = a.games[0];
+  assert.equal(secondsLeft(d, g, Date.parse(at(1))), 300);
+  assert.equal(secondsLeft(d, g, Date.parse(at(5)) + 48000), 12);
+  assert.equal(secondsLeft(d, b.games[0], Date.parse(at(30))), null);
+  assert.deepEqual(timesUp(d, Date.parse(at(5))), []);
+  const up = timesUp(d, Date.parse(at(6)));
+  assert.equal(up.length, 1);
+  assert.equal(up[0].token, a);
+  assert.equal(up[0].index, 0);
+  assert.equal(up[0].left, 0);
+  assert.equal(timesUp(d, Date.parse(at(7)))[0].left, -60);
+  endGame(a, 0, "won", at(7));
+  assert.deepEqual(timesUp(d, Date.parse(at(8))), []);
+  assert.equal(secondsLeft(d, g, Date.parse(at(8))), null);
+});
+
+test("the game furthest over its time comes first", () => {
+  const d = stall();
+  d.games[0].limit = 5;
+  d.games[1].limit = 5;
+  const a = startToken(d, "Alice", ["g1", "g3"], at(0)).token;
+  const b = startToken(d, "Bob", ["g2", "g3"], at(0)).token;
+  startGame(a, 0, at(2));
+  startGame(b, 0, at(1));
+  assert.deepEqual(timesUp(d, Date.parse(at(10))).map((x) => x.token), [b, a]);
+});
+
+test("countdown text is minutes and seconds", () => {
+  assert.equal(countdownText(192), "3:12");
+  assert.equal(countdownText(5), "0:05");
+  assert.equal(countdownText(0), "0:00");
+  assert.equal(countdownText(-65), "1:05");
+});
+
+test("a backup's time limits are checked", () => {
+  const d = stall();
+  d.games[0].limit = 5;
+  d.games[1].limit = null;
+  assert.equal(parseData(JSON.stringify(d)).games[0].limit, 5);
+  d.games[2].limit = 0;
+  assert.throws(() => parseData(JSON.stringify(d)), /time limit/);
 });
